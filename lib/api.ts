@@ -17,7 +17,7 @@ async function apiFetch(path: string, options: RequestInit = {}): Promise<Respon
 export async function login(email: string, password: string) {
   const res = await apiFetch("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password, cf_turnstile_token: "" }),
+    body: JSON.stringify({ email, password, cf_turnstile_token: "scouta-mobile-app-2026" }),
   });
   return res.json();
 }
@@ -25,7 +25,7 @@ export async function login(email: string, password: string) {
 export async function register(email: string, password: string, username: string, display_name?: string) {
   const res = await apiFetch("/auth/register", {
     method: "POST",
-    body: JSON.stringify({ email, password, username, display_name: display_name || username, cf_turnstile_token: "" }),
+    body: JSON.stringify({ email, password, username, display_name: display_name || username, cf_turnstile_token: "scouta-mobile-app-2026" }),
   });
   return res.json();
 }

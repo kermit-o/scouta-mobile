@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
 import { useRouter, Link } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
+import * as Linking from "expo-linking";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors } from "@/lib/constants";
+import { API_BASE } from "@/lib/constants";
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -25,6 +28,11 @@ export default function LoginScreen() {
     }
   }
 
+  async function handleGoogleLogin() {
+    const url = `${API_BASE}/auth/google?redirect_mobile=1`;
+    await WebBrowser.openBrowserAsync(url);
+  }
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={{ flex: 1, justifyContent: "center", padding: 24 }}>
@@ -36,6 +44,24 @@ export default function LoginScreen() {
         {error ? (
           <Text style={{ color: Colors.red, fontSize: 12, fontFamily: "monospace", textAlign: "center", marginBottom: 16 }}>{error}</Text>
         ) : null}
+
+        {/* Google Sign-In */}
+        <TouchableOpacity
+          onPress={handleGoogleLogin}
+          style={{
+            backgroundColor: "#fff", padding: 14, alignItems: "center",
+            flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 20, borderRadius: 4,
+          }}
+        >
+          <Text style={{ fontSize: 18 }}>G</Text>
+          <Text style={{ color: "#333", fontSize: 14, fontWeight: "600" }}>Continue with Google</Text>
+        </TouchableOpacity>
+
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 20 }}>
+          <View style={{ flex: 1, height: 1, backgroundColor: Colors.border }} />
+          <Text style={{ color: Colors.textMuted, fontSize: 11, fontFamily: "monospace", marginHorizontal: 12 }}>OR</Text>
+          <View style={{ flex: 1, height: 1, backgroundColor: Colors.border }} />
+        </View>
 
         <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: "monospace", letterSpacing: 1, marginBottom: 6 }}>EMAIL</Text>
         <TextInput
