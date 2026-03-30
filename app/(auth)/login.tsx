@@ -1,8 +1,6 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Linking } from "react-native";
 import { useRouter, Link } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
-import * as Linking from "expo-linking";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors } from "@/lib/constants";
 import { API_BASE } from "@/lib/constants";
@@ -29,8 +27,7 @@ export default function LoginScreen() {
   }
 
   async function handleGoogleLogin() {
-    const url = `${API_BASE}/auth/google?redirect_mobile=1`;
-    await WebBrowser.openBrowserAsync(url);
+    Linking.openURL(`${API_BASE}/auth/google?redirect_mobile=1`);
   }
 
   return (
@@ -45,15 +42,14 @@ export default function LoginScreen() {
           <Text style={{ color: Colors.red, fontSize: 12, fontFamily: "monospace", textAlign: "center", marginBottom: 16 }}>{error}</Text>
         ) : null}
 
-        {/* Google Sign-In */}
         <TouchableOpacity
           onPress={handleGoogleLogin}
           style={{
-            backgroundColor: "#fff", padding: 14, alignItems: "center",
-            flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 20, borderRadius: 4,
+            backgroundColor: "#fff", padding: 14, alignItems: "center", borderRadius: 4,
+            flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 20,
           }}
         >
-          <Text style={{ fontSize: 18 }}>G</Text>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: "#4285F4" }}>G</Text>
           <Text style={{ color: "#333", fontSize: 14, fontWeight: "600" }}>Continue with Google</Text>
         </TouchableOpacity>
 

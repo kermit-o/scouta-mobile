@@ -255,3 +255,7 @@ export async function getEarnings() {
   const res = await apiFetch("/coins/earnings");
   return res.json();
 }
+
+export function getGoogleLoginUrl() {
+  return `${API_BASE}/auth/google?redirect_mobile=1`;
+}
