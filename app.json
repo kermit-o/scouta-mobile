@@ -14,12 +14,10 @@
       "backgroundColor": "#080808"
     },
     "ios": {
-      "newArchEnabled": false,
       "supportsTablet": true,
       "bundleIdentifier": "co.scouta.app"
     },
     "android": {
-      "newArchEnabled": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#080808"

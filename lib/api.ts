@@ -288,6 +288,3 @@ export async function presignUpload(filename: string, contentType: string, sizeB
   return res.json();
 }
 
-export function getGoogleLoginUrl() {
-  return `${API_BASE}/auth/google?redirect_mobile=1`;
-}
