@@ -24,10 +24,9 @@ export default function ChatScreen() {
       const data = await getMessages(Number(convId));
       setMessages(Array.isArray(data) ? data : []);
       setLoading(false);
-      // Connect WebSocket
       const token = await getToken();
       if (token) {
-        const wsUrl = `${WS_BASE}/messages/ws/${convId}?token=${token}`;
+        const wsUrl = WS_BASE.replace("https://", "wss://") + `/messages/ws/${convId}?token=${token}`;
         ws = new WebSocket(wsUrl);
         wsRef.current = ws;
         ws.onmessage = (e) => {
@@ -47,56 +46,34 @@ export default function ChatScreen() {
     setBody("");
   }
 
-  function timeAgo(d: string) {
-    const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000);
-    if (m < 1) return "now";
-    if (m < 60) return m + "m";
-    return Math.floor(m / 60) + "h";
-  }
+  function timeAgo(d: string) { const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000); if (m < 1) return "now"; if (m < 60) return m + "m"; return Math.floor(m / 60) + "h"; }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bg }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      {/* Header */}
-      <View style={{ paddingTop: 50, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bg }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
+      <View style={{ paddingTop: 50, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
         <TouchableOpacity onPress={() => router.back()}>
           <Text style={{ color: Colors.blue, fontFamily: Fonts.mono, fontSize: 12 }}>{"< Back"}</Text>
         </TouchableOpacity>
       </View>
-
-      {/* Messages */}
-      <FlatList
-        ref={listRef}
-        data={messages}
-        keyExtractor={item => String(item.id)}
-        onContentSizeChange={() => listRef.current?.scrollToEnd()}
-        contentContainerStyle={{ padding: 12, gap: 6 }}
+      <FlatList ref={listRef} data={messages} keyExtractor={item => String(item.id)}
+        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+        contentContainerStyle={{ padding: 12, gap: 6, flexGrow: 1 }}
         renderItem={({ item }) => {
           const isMe = item.sender_id === user?.id;
           return (
             <View style={{ alignItems: isMe ? "flex-end" : "flex-start" }}>
-              <View style={{
-                backgroundColor: isMe ? Colors.green + "33" : Colors.card,
-                borderWidth: 1, borderColor: isMe ? Colors.green + "44" : Colors.border,
-                padding: 10, borderRadius: 12, maxWidth: "75%",
-              }}>
+              <View style={{ backgroundColor: isMe ? Colors.green + "33" : Colors.card, borderWidth: 1, borderColor: isMe ? Colors.green + "44" : Colors.border, padding: 10, borderRadius: 12, maxWidth: "75%" }}>
                 <Text style={{ color: Colors.text, fontSize: 14 }}>{item.body}</Text>
                 <Text style={{ color: Colors.textMuted, fontSize: 9, fontFamily: Fonts.mono, marginTop: 4 }}>{timeAgo(item.created_at)}</Text>
               </View>
             </View>
           );
-        }}
-      />
-
-      {/* Input */}
-      <View style={{ flexDirection: "row", padding: 8, gap: 8, borderTopWidth: 1, borderTopColor: Colors.border }}>
-        <TextInput
-          value={body}
-          onChangeText={setBody}
-          onSubmitEditing={sendMsg}
-          placeholder="Type a message..."
-          placeholderTextColor={Colors.textMuted}
-          style={{ flex: 1, backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder, color: Colors.text, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, fontSize: 14 }}
-        />
+        }} />
+      <View style={{ flexDirection: "row", padding: 8, gap: 8, borderTopWidth: 1, borderTopColor: Colors.border, backgroundColor: Colors.bg }}>
+        <TextInput value={body} onChangeText={setBody} onSubmitEditing={sendMsg} placeholder="Type a message..." placeholderTextColor={Colors.textMuted}
+          style={{ flex: 1, backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder, color: Colors.text, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 20, fontSize: 14 }} />
         <TouchableOpacity onPress={sendMsg} disabled={!body.trim()}
           style={{ backgroundColor: body.trim() ? Colors.green : Colors.border, borderRadius: 20, width: 40, height: 40, alignItems: "center", justifyContent: "center" }}>
           <Text style={{ color: "#fff", fontSize: 16 }}>↑</Text>
