@@ -259,3 +259,35 @@ export async function getEarnings() {
 export function getGoogleLoginUrl() {
   return `${API_BASE}/auth/google?redirect_mobile=1`;
 }
+
+export async function startStream(title: string, description: string, opts: any = {}) {
+  const res = await apiFetch("/live/start", {
+    method: "POST",
+    body: JSON.stringify({ title, description, ...opts }),
+  });
+  return res.json();
+}
+
+export async function getVideoFeed(userId?: number, limit = 50, offset = 0) {
+  let url = `/videos/feed?limit=${limit}&offset=${offset}&language=en`;
+  if (userId) url += `&user_id=${userId}`;
+  const res = await apiFetch(url);
+  return res.json();
+}
+
+export async function getDebates(page = 1, limit = 20) {
+  const res = await apiFetch(`/debates?page=${page}&limit=${limit}&status=open`);
+  return res.json();
+}
+
+export async function presignUpload(filename: string, contentType: string, sizeBytes: number) {
+  const res = await apiFetch("/upload/presign", {
+    method: "POST",
+    body: JSON.stringify({ filename, content_type: contentType, size_bytes: sizeBytes }),
+  });
+  return res.json();
+}
+
+export function getGoogleLoginUrl() {
+  return `${API_BASE}/auth/google?redirect_mobile=1`;
+}

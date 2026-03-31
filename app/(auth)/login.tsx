@@ -26,10 +26,6 @@ export default function LoginScreen() {
     }
   }
 
-  async function handleGoogleLogin() {
-    Linking.openURL(`${API_BASE}/auth/google?redirect_mobile=1`);
-  }
-
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={{ flex: 1, justifyContent: "center", padding: 24 }}>
@@ -43,11 +39,8 @@ export default function LoginScreen() {
         ) : null}
 
         <TouchableOpacity
-          onPress={handleGoogleLogin}
-          style={{
-            backgroundColor: "#fff", padding: 14, alignItems: "center", borderRadius: 4,
-            flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 20,
-          }}
+          onPress={() => Linking.openURL(`${API_BASE}/auth/google?redirect_mobile=1`)}
+          style={{ backgroundColor: "#fff", padding: 14, alignItems: "center", borderRadius: 4, flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 20 }}
         >
           <Text style={{ fontSize: 18, fontWeight: "700", color: "#4285F4" }}>G</Text>
           <Text style={{ color: "#333", fontSize: 14, fontWeight: "600" }}>Continue with Google</Text>
@@ -60,31 +53,12 @@ export default function LoginScreen() {
         </View>
 
         <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: "monospace", letterSpacing: 1, marginBottom: 6 }}>EMAIL</Text>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          placeholder="you@email.com"
-          placeholderTextColor={Colors.textMuted}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          style={{
-            backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder,
-            color: Colors.text, padding: 14, fontSize: 15, fontFamily: "monospace", marginBottom: 16,
-          }}
-        />
+        <TextInput value={email} onChangeText={setEmail} placeholder="you@email.com" placeholderTextColor={Colors.textMuted} autoCapitalize="none" keyboardType="email-address"
+          style={{ backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder, color: Colors.text, padding: 14, fontSize: 15, fontFamily: "monospace", marginBottom: 16 }} />
 
         <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: "monospace", letterSpacing: 1, marginBottom: 6 }}>PASSWORD</Text>
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Password"
-          placeholderTextColor={Colors.textMuted}
-          secureTextEntry
-          style={{
-            backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder,
-            color: Colors.text, padding: 14, fontSize: 15, fontFamily: "monospace", marginBottom: 8,
-          }}
-        />
+        <TextInput value={password} onChangeText={setPassword} placeholder="Password" placeholderTextColor={Colors.textMuted} secureTextEntry
+          style={{ backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder, color: Colors.text, padding: 14, fontSize: 15, fontFamily: "monospace", marginBottom: 8 }} />
 
         <Link href="/(auth)/forgot-password" asChild>
           <TouchableOpacity style={{ alignSelf: "flex-end", marginBottom: 24 }}>
@@ -92,24 +66,14 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </Link>
 
-        <TouchableOpacity
-          onPress={handleLogin}
-          disabled={loading || !email.trim() || !password.trim()}
-          style={{
-            backgroundColor: Colors.green, padding: 16, alignItems: "center",
-            opacity: loading || !email.trim() || !password.trim() ? 0.5 : 1,
-          }}
-        >
-          {loading ? <ActivityIndicator color="#fff" /> : (
-            <Text style={{ color: "#fff", fontSize: 13, fontFamily: "monospace", letterSpacing: 1 }}>SIGN IN</Text>
-          )}
+        <TouchableOpacity onPress={handleLogin} disabled={loading || !email.trim() || !password.trim()}
+          style={{ backgroundColor: Colors.green, padding: 16, alignItems: "center", opacity: loading || !email.trim() || !password.trim() ? 0.5 : 1 }}>
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={{ color: "#fff", fontSize: 13, fontFamily: "monospace", letterSpacing: 1 }}>SIGN IN</Text>}
         </TouchableOpacity>
 
         <View style={{ flexDirection: "row", justifyContent: "center", marginTop: 24, gap: 4 }}>
           <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: "monospace" }}>No account?</Text>
-          <Link href="/(auth)/register">
-            <Text style={{ color: Colors.green, fontSize: 12, fontFamily: "monospace" }}>Sign up</Text>
-          </Link>
+          <Link href="/(auth)/register"><Text style={{ color: Colors.green, fontSize: 12, fontFamily: "monospace" }}>Sign up</Text></Link>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
