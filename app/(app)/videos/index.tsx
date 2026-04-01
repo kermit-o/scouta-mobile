@@ -1,14 +1,13 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { View, Text, FlatList, TouchableOpacity, Dimensions, ActivityIndicator, RefreshControl, Modal, TextInput, KeyboardAvoidingView, Platform } from "react-native";
-import { Video, ResizeMode, AVPlaybackStatus } from "expo-av";
+import { View, Text, FlatList, TouchableOpacity, Dimensions, ActivityIndicator, RefreshControl, Modal, TextInput, KeyboardAvoidingView, Platform, AppState } from "react-native";
+import { Video, ResizeMode } from "expo-av";
 import { useRouter } from "expo-router";
 import { getVideoFeed, votePost, getComments, createComment } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors, Fonts } from "@/lib/constants";
 import type { Comment } from "@/lib/types";
-import { useFocusEffect } from "expo-router";
 
-const { height: SCREEN_H, width: SCREEN_W } = Dimensions.get("window");
+const { height: SCREEN_H } = Dimensions.get("window");
 const CARD_H = SCREEN_H - 80;
 
 interface VideoPost {
@@ -25,10 +24,9 @@ export default function VideoFeedScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [liked, setLiked] = useState<Set<number>>(new Set());
-  const [isFocused, setIsFocused] = useState(true);
   const videoRefs = useRef<Record<number, Video | null>>({});
+  const appState = useRef(AppState.currentState);
 
-  // Comments modal state
   const [showComments, setShowComments] = useState(false);
   const [commentsPostId, setCommentsPostId] = useState<number | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -47,40 +45,53 @@ export default function VideoFeedScreen() {
 
   useEffect(() => { load(); }, []);
 
-  // Pause all videos when screen loses focus
-  useFocusEffect(
-    useCallback(() => {
-      setIsFocused(true);
-      return () => {
-        setIsFocused(false);
-        Object.values(videoRefs.current).forEach(v => v?.pauseAsync?.());
-      };
-    }, [])
-  );
-
-  const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
-    if (viewableItems.length > 0) {
-      const newIndex = viewableItems[0].index ?? 0;
-      // Pause all other videos
-      Object.entries(videoRefs.current).forEach(([idx, ref]) => {
-        if (Number(idx) !== newIndex) ref?.pauseAsync?.();
-      });
-      setActiveIndex(newIndex);
-    }
+  // Pause videos when app goes to background
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next !== "active") {
+        Object.values(videoRefs.current).forEach(v => { try { v?.pauseAsync(); } catch {} });
+      }
+      appState.current = next;
+    });
+    return () => sub.remove();
   }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(videoRefs.current).forEach(v => { try { v?.stopAsync(); } catch {} });
+    };
+  }, []);
+
+  const viewConfig = useRef({ itemVisiblePercentThreshold: 80 });
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    if (viewableItems.length > 0) {
+      const idx = viewableItems[0].index ?? 0;
+      setActiveIndex(idx);
+    }
+  }).current;
+
+  // Pause non-active videos when activeIndex changes
+  useEffect(() => {
+    Object.entries(videoRefs.current).forEach(([idx, ref]) => {
+      try {
+        if (Number(idx) !== activeIndex) ref?.pauseAsync();
+        else if (!showComments) ref?.playAsync();
+      } catch {}
+    });
+  }, [activeIndex, showComments]);
 
   async function toggleLike(id: number) {
     const isLiked = liked.has(id);
     setLiked(prev => { const s = new Set(prev); isLiked ? s.delete(id) : s.add(id); return s; });
-    await votePost(id, isLiked ? -1 : 1);
+    try { await votePost(id, isLiked ? -1 : 1); } catch {}
   }
 
   async function openComments(postId: number) {
     setCommentsPostId(postId);
     setShowComments(true);
     setLoadingComments(true);
-    // Pause video when comments open
-    videoRefs.current[activeIndex]?.pauseAsync?.();
+    try { videoRefs.current[activeIndex]?.pauseAsync(); } catch {}
     try {
       const data = await getComments(postId);
       setComments(Array.isArray(data) ? data : data.comments || []);
@@ -93,8 +104,7 @@ export default function VideoFeedScreen() {
     setCommentsPostId(null);
     setComments([]);
     setCommentText("");
-    // Resume video
-    if (isFocused) videoRefs.current[activeIndex]?.playAsync?.();
+    try { videoRefs.current[activeIndex]?.playAsync(); } catch {}
   }
 
   async function handleSendComment() {
@@ -115,7 +125,7 @@ export default function VideoFeedScreen() {
     <View style={{ flex: 1, backgroundColor: "#000" }}>
       <FlatList data={videos} keyExtractor={item => String(item.id)} pagingEnabled snapToInterval={CARD_H}
         decelerationRate="fast" showsVerticalScrollIndicator={false}
-        onViewableItemsChanged={onViewableItemsChanged} viewabilityConfig={{ itemVisiblePercentThreshold: 80 }}
+        onViewableItemsChanged={onViewableItemsChanged} viewabilityConfig={viewConfig.current}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={Colors.green} />}
         ListEmptyComponent={<View style={{ height: CARD_H, backgroundColor: "#000", alignItems: "center", justifyContent: "center" }}><Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono }}>No videos yet</Text></View>}
         renderItem={({ item, index }) => {
@@ -124,31 +134,24 @@ export default function VideoFeedScreen() {
             <View style={{ height: CARD_H, backgroundColor: "#000" }}>
               <Video ref={(ref) => { videoRefs.current[index] = ref; }} source={{ uri: item.media_url }}
                 style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
-                resizeMode={ResizeMode.CONTAIN} shouldPlay={index === activeIndex && isFocused && !showComments} isLooping isMuted={false}
-                onPlaybackStatusUpdate={(s: AVPlaybackStatus) => {}} />
-              {/* Right side buttons */}
+                resizeMode={ResizeMode.CONTAIN} shouldPlay={index === activeIndex && !showComments} isLooping isMuted={false} />
               <View style={{ position: "absolute", right: 8, bottom: 80, gap: 18, alignItems: "center" }}>
-                {/* Avatar */}
                 <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.green + "44", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: Colors.green }}>
                   <Text style={{ color: Colors.green, fontSize: 16, fontWeight: "700" }}>{(author || "?").charAt(0).toUpperCase()}</Text>
                 </View>
-                {/* Like */}
                 <TouchableOpacity onPress={() => toggleLike(item.id)} style={{ alignItems: "center" }}>
-                  <Text style={{ fontSize: 30 }}>{liked.has(item.id) ? "\u2764\uFE0F" : "\u{1F90D}"}</Text>
+                  <Text style={{ fontSize: 28 }}>{liked.has(item.id) ? "\u2764\uFE0F" : "\ud83e\udd0d"}</Text>
                   <Text style={{ color: "#fff", fontFamily: Fonts.mono, fontSize: 11, marginTop: 2 }}>{(item.upvote_count || 0) + (liked.has(item.id) ? 1 : 0)}</Text>
                 </TouchableOpacity>
-                {/* Comments */}
                 <TouchableOpacity onPress={() => openComments(item.id)} style={{ alignItems: "center" }}>
-                  <Text style={{ fontSize: 26 }}>{"\ud83d\udcac"}</Text>
+                  <Text style={{ fontSize: 24 }}>\ud83d\udcac</Text>
                   <Text style={{ color: "#fff", fontFamily: Fonts.mono, fontSize: 11, marginTop: 2 }}>{item.comment_count || 0}</Text>
                 </TouchableOpacity>
-                {/* Share */}
                 <TouchableOpacity style={{ alignItems: "center" }}>
-                  <Text style={{ fontSize: 26 }}>{"\u27A1\uFE0F"}</Text>
+                  <Text style={{ fontSize: 24 }}>\u27a1\ufe0f</Text>
                 </TouchableOpacity>
               </View>
-              {/* Bottom info */}
-              <View style={{ position: "absolute", bottom: 16, left: 12, right: 64, paddingRight: 8 }}>
+              <View style={{ position: "absolute", bottom: 16, left: 12, right: 64 }}>
                 <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14, textShadowColor: "rgba(0,0,0,0.9)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }}>@{author}</Text>
                 <Text style={{ color: "#fff", fontSize: 14, marginTop: 4, textShadowColor: "rgba(0,0,0,0.9)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }} numberOfLines={2}>{item.title}</Text>
               </View>
@@ -157,22 +160,18 @@ export default function VideoFeedScreen() {
         }}
       />
 
-      {/* Comments Bottom Sheet - Instagram/TikTok style */}
       <Modal visible={showComments} animationType="slide" transparent onRequestClose={closeComments}>
         <View style={{ flex: 1 }}>
           <TouchableOpacity style={{ flex: 0.35 }} activeOpacity={1} onPress={closeComments} />
           <KeyboardAvoidingView style={{ flex: 0.65, backgroundColor: Colors.bg, borderTopLeftRadius: 16, borderTopRightRadius: 16 }}
             behavior={Platform.OS === "ios" ? "padding" : "height"}>
-            {/* Drag handle */}
             <View style={{ alignItems: "center", paddingTop: 10, paddingBottom: 6 }}>
               <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: Colors.border }} />
             </View>
-            {/* Header */}
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 0.5, borderBottomColor: Colors.border }}>
               <Text style={{ color: Colors.text, fontSize: 15, fontWeight: "700" }}>{comments.length} comments</Text>
-              <TouchableOpacity onPress={closeComments}><Text style={{ color: Colors.textMuted, fontSize: 22 }}>\u2715</Text></TouchableOpacity>
+              <TouchableOpacity onPress={closeComments}><Text style={{ color: Colors.textMuted, fontSize: 22 }}>X</Text></TouchableOpacity>
             </View>
-            {/* Comments list */}
             {loadingComments ? <ActivityIndicator color={Colors.green} style={{ marginTop: 30 }} /> : (
               <FlatList data={comments.filter(c => !c.parent_comment_id)} keyExtractor={item => String(item.id)}
                 contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, gap: 16 }}
@@ -188,7 +187,7 @@ export default function VideoFeedScreen() {
                         </View>
                         <View style={{ flex: 1 }}>
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                            <Text style={{ color: Colors.text, fontSize: 13, fontWeight: "600" }}>{item.author_display_name || item.author_username}{isAgent ? " \u26A1" : ""}</Text>
+                            <Text style={{ color: Colors.text, fontSize: 13, fontWeight: "600" }}>{item.author_display_name || item.author_username}{isAgent ? " \u26a1" : ""}</Text>
                             <Text style={{ color: Colors.textMuted, fontSize: 11 }}>{timeAgo(item.created_at)}</Text>
                           </View>
                           <Text style={{ color: Colors.text, fontSize: 14, lineHeight: 20, marginTop: 3 }}>{item.body}</Text>
@@ -211,7 +210,6 @@ export default function VideoFeedScreen() {
                               </View>
                             </View>
                           ))}
-                          {replies.length > 3 && <Text style={{ color: Colors.textMuted, fontSize: 12, marginLeft: 36 }}>View {replies.length - 3} more replies</Text>}
                         </View>
                       )}
                     </View>
@@ -219,7 +217,6 @@ export default function VideoFeedScreen() {
                 }}
               />
             )}
-            {/* Comment input */}
             {token ? (
               <View style={{ flexDirection: "row", paddingHorizontal: 12, paddingVertical: 8, gap: 8, borderTopWidth: 0.5, borderTopColor: Colors.border, backgroundColor: Colors.bg }}>
                 <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.green + "33", alignItems: "center", justifyContent: "center" }}>
