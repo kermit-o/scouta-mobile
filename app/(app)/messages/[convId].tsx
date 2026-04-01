@@ -27,8 +27,7 @@ export default function ChatScreen() {
       const token = await getToken();
       if (token) {
         const wsUrl = WS_BASE.replace("https://", "wss://") + `/messages/ws/${convId}?token=${token}`;
-        ws = new WebSocket(wsUrl);
-        wsRef.current = ws;
+        ws = new WebSocket(wsUrl); wsRef.current = ws;
         ws.onmessage = (e) => {
           const msg = JSON.parse(e.data);
           if (msg.type === "message" || msg.type === "new_message") {
@@ -49,9 +48,7 @@ export default function ChatScreen() {
   function timeAgo(d: string) { const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000); if (m < 1) return "now"; if (m < 60) return m + "m"; return Math.floor(m / 60) + "h"; }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bg }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bg }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
       <View style={{ paddingTop: 50, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
         <TouchableOpacity onPress={() => router.back()}>
           <Text style={{ color: Colors.blue, fontFamily: Fonts.mono, fontSize: 12 }}>{"< Back"}</Text>

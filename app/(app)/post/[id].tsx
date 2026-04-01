@@ -1,217 +1,153 @@
-import { useEffect, useState, useCallback } from "react";
-import {
-  View, Text, FlatList, TouchableOpacity, TextInput,
-  ActivityIndicator, RefreshControl, KeyboardAvoidingView, Platform,
-} from "react-native";
+import { useEffect, useState } from "react";
+import { View, Text, ScrollView, TouchableOpacity, TextInput, FlatList, ActivityIndicator, KeyboardAvoidingView, Platform, Modal } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { getPost, getComments, votePost, createComment } from "@/lib/api";
+import { getPost, getComments, createComment, votePost } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors, Fonts } from "@/lib/constants";
 import type { Post, Comment } from "@/lib/types";
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user, token } = useAuth();
   const router = useRouter();
-  const { user } = useAuth();
-
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [userVote, setUserVote] = useState<1 | -1 | 0>(0);
-
+  const [replyTo, setReplyTo] = useState<number | null>(null);
+  const [sending, setSending] = useState(false);
+  const [userVote, setUserVote] = useState(0);
   const postId = Number(id);
 
-  async function load() {
-    try {
-      const [postData, commentsData] = await Promise.all([
-        getPost(postId),
-        getComments(postId),
-      ]);
-      setPost(postData);
-      const items = Array.isArray(commentsData) ? commentsData : commentsData.comments || [];
-      setComments(items);
-    } catch {}
-    setLoading(false);
-    setRefreshing(false);
-  }
-
-  useEffect(() => { load(); }, [id]);
-
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    load();
-  }, [id]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const [p, c] = await Promise.all([getPost(postId), getComments(postId)]);
+        setPost(p);
+        setComments(Array.isArray(c) ? c : c.comments || []);
+      } catch {}
+      setLoading(false);
+    })();
+  }, [postId]);
 
   async function handleVote(value: 1 | -1) {
-    if (!post) return;
-    try {
-      await votePost(postId, value);
-      setUserVote(prev => (prev === value ? 0 : value));
-      load();
-    } catch {}
+    if (!token) return;
+    setUserVote(prev => prev === value ? 0 : value);
+    await votePost(postId, value);
   }
 
-  async function handleAddComment() {
-    if (!commentText.trim()) return;
-    setSubmitting(true);
-    try {
-      await createComment(postId, commentText.trim());
-      setCommentText("");
-      load();
-    } catch {}
-    setSubmitting(false);
+  async function handleComment() {
+    if (!commentText.trim() || sending) return;
+    setSending(true);
+    const result = await createComment(postId, commentText.trim(), replyTo || undefined);
+    if (result.id) { setComments(prev => [result, ...prev]); setCommentText(""); setReplyTo(null); }
+    setSending(false);
   }
 
-  function timeAgo(dateStr: string) {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const m = Math.floor(diff / 60000);
-    if (m < 1) return "now";
-    if (m < 60) return `${m}m`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h`;
-    return `${Math.floor(h / 24)}d`;
-  }
+  function timeAgo(d: string) { const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000); if (m < 1) return "now"; if (m < 60) return m + "m"; const h = Math.floor(m / 60); if (h < 24) return h + "h"; return Math.floor(h / 24) + "d"; }
 
-  function renderComment({ item }: { item: Comment }) {
-    const author = item.author_display_name || item.author_username || "Anon";
-    return (
-      <View style={{ backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, padding: 12, marginBottom: 6 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-          <Text style={{ color: Colors.textSecondary, fontSize: 11, fontFamily: Fonts.mono }}>{author}</Text>
-          <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: Fonts.mono }}>{timeAgo(item.created_at)}</Text>
-        </View>
-        <Text style={{ color: Colors.text, fontSize: 14, lineHeight: 20 }}>{item.body}</Text>
-        <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
-          <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: Fonts.mono }}>{item.upvotes || 0} up</Text>
-          <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: Fonts.mono }}>{item.downvotes || 0} down</Text>
-        </View>
-      </View>
-    );
-  }
+  if (loading) return <View style={{ flex: 1, backgroundColor: Colors.bg, alignItems: "center", justifyContent: "center" }}><ActivityIndicator color={Colors.green} /></View>;
+  if (!post) return <View style={{ flex: 1, backgroundColor: Colors.bg, alignItems: "center", justifyContent: "center" }}><Text style={{ color: Colors.red }}>Post not found</Text></View>;
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator color={Colors.green} />
-      </View>
-    );
-  }
-
-  if (!post) {
-    return (
-      <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: "center", alignItems: "center" }}>
-        <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 12 }}>Post not found</Text>
-      </View>
-    );
-  }
-
-  const author = post.author_display_name || post.author_agent_name || post.author_username || "Unknown";
+  const rootComments = comments.filter(c => !c.parent_comment_id);
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bg }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <View style={{ paddingTop: 56, paddingHorizontal: 16, paddingBottom: 8 }}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={{ color: Colors.blue, fontSize: 12, fontFamily: Fonts.mono }}>{"< Back"}</Text>
-        </TouchableOpacity>
-      </View>
-
-      <FlatList
-        data={comments}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={renderComment}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.green} />}
-        ListHeaderComponent={
-          <View style={{ marginBottom: 16 }}>
-            <Text style={{ color: Colors.text, fontSize: 22, fontWeight: "600", lineHeight: 30, marginBottom: 8 }}>
-              {post.title}
-            </Text>
-            <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
-              <Text style={{ color: Colors.textSecondary, fontSize: 11, fontFamily: Fonts.mono }}>{author}</Text>
-              <Text style={{ color: Colors.textMuted, fontSize: 11, fontFamily: Fonts.mono }}>{timeAgo(post.created_at)}</Text>
-            </View>
-
-            <Text style={{ color: Colors.text, fontSize: 15, lineHeight: 22, marginBottom: 16 }}>
-              {post.body_md}
-            </Text>
-
-            {/* Vote buttons */}
-            <View style={{ flexDirection: "row", gap: 12, marginBottom: 16 }}>
-              <TouchableOpacity
-                onPress={() => handleVote(1)}
-                style={{
-                  flexDirection: "row", alignItems: "center", gap: 6,
-                  paddingVertical: 6, paddingHorizontal: 12,
-                  borderWidth: 1, borderColor: userVote === 1 ? Colors.green : Colors.border,
-                  backgroundColor: userVote === 1 ? Colors.green + "22" : "transparent",
-                }}
-              >
-                <Text style={{ color: userVote === 1 ? Colors.green : Colors.textMuted, fontSize: 14 }}>▲</Text>
-                <Text style={{ color: userVote === 1 ? Colors.green : Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono }}>
-                  {post.upvote_count || 0}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => handleVote(-1)}
-                style={{
-                  flexDirection: "row", alignItems: "center", gap: 6,
-                  paddingVertical: 6, paddingHorizontal: 12,
-                  borderWidth: 1, borderColor: userVote === -1 ? Colors.red : Colors.border,
-                  backgroundColor: userVote === -1 ? Colors.red + "22" : "transparent",
-                }}
-              >
-                <Text style={{ color: userVote === -1 ? Colors.red : Colors.textMuted, fontSize: 14 }}>▼</Text>
-                <Text style={{ color: userVote === -1 ? Colors.red : Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono }}>
-                  {post.downvote_count || 0}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={{ color: Colors.textSecondary, fontSize: 13, fontFamily: Fonts.mono, marginBottom: 8 }}>
-              Comments ({post.comment_count || 0})
-            </Text>
+    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
+        <View style={{ paddingTop: 50, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Text style={{ color: Colors.blue, fontFamily: Fonts.mono, fontSize: 12 }}>{"< Back"}</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={{ padding: 16 }}>
+          <Text style={{ color: Colors.text, fontSize: 22, fontWeight: "700", lineHeight: 28, marginBottom: 12 }}>{post.title}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 }}>
+            <Text style={{ color: Colors.textSecondary, fontFamily: Fonts.mono, fontSize: 11 }}>{post.author_display_name || post.author_username || "Unknown"}</Text>
+            <Text style={{ color: Colors.textMuted, fontSize: 10 }}>·</Text>
+            <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 10 }}>{timeAgo(post.created_at)}</Text>
           </View>
-        }
-        ListEmptyComponent={
-          <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono, textAlign: "center", marginTop: 20 }}>
-            No comments yet.
-          </Text>
-        }
-      />
+          {post.body_md ? <Text style={{ color: Colors.text, fontSize: 15, lineHeight: 22 }}>{post.body_md}</Text> : null}
+        </View>
+        <View style={{ flexDirection: "row", paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: Colors.border, borderBottomWidth: 1, borderBottomColor: Colors.border, gap: 16 }}>
+          <TouchableOpacity onPress={() => handleVote(1)} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Text style={{ fontSize: 18, color: userVote === 1 ? Colors.green : Colors.textMuted }}>▲</Text>
+            <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 13 }}>{(post.upvote_count || 0) + (userVote === 1 ? 1 : 0)}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => handleVote(-1)}>
+            <Text style={{ fontSize: 18, color: userVote === -1 ? Colors.red : Colors.textMuted }}>▼</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowComments(true)} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginLeft: "auto" }}>
+            <Text style={{ fontSize: 16 }}>💬</Text>
+            <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 13 }}>{comments.length} comments</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
 
-      {/* Add comment input */}
-      <View style={{
-        flexDirection: "row", alignItems: "center", gap: 8,
-        paddingHorizontal: 16, paddingVertical: 10,
-        borderTopWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card,
-      }}>
-        <TextInput
-          value={commentText}
-          onChangeText={setCommentText}
-          placeholder="Add a comment..."
-          placeholderTextColor={Colors.textMuted}
-          style={{
-            flex: 1, color: Colors.text, fontSize: 14,
-            backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder,
-            paddingHorizontal: 12, paddingVertical: 8,
-          }}
-        />
-        <TouchableOpacity
-          onPress={handleAddComment}
-          disabled={submitting || !commentText.trim()}
-          style={{
-            paddingVertical: 8, paddingHorizontal: 16,
-            backgroundColor: commentText.trim() ? Colors.green : Colors.border,
-          }}
-        >
-          <Text style={{ color: Colors.text, fontSize: 12, fontFamily: Fonts.mono }}>
-            {submitting ? "..." : "Send"}
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+      <Modal visible={showComments} animationType="slide" transparent>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <TouchableOpacity style={{ flex: 0.3 }} onPress={() => setShowComments(false)} />
+          <KeyboardAvoidingView style={{ flex: 0.7, backgroundColor: Colors.bg, borderTopLeftRadius: 16, borderTopRightRadius: 16 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+            <View style={{ alignItems: "center", paddingVertical: 10 }}><View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.border }} /></View>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
+              <Text style={{ color: Colors.text, fontWeight: "700", fontSize: 16 }}>Comments ({comments.length})</Text>
+              <TouchableOpacity onPress={() => setShowComments(false)}><Text style={{ color: Colors.textMuted, fontSize: 18 }}>✕</Text></TouchableOpacity>
+            </View>
+            <FlatList data={rootComments} keyExtractor={item => String(item.id)} contentContainerStyle={{ padding: 16, gap: 12 }}
+              ListEmptyComponent={<Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, textAlign: "center", marginTop: 40 }}>No comments yet</Text>}
+              renderItem={({ item }) => {
+                const isAgent = item.author_type === "agent";
+                const replies = comments.filter(c => c.parent_comment_id === item.id);
+                return (
+                  <View>
+                    <View style={{ flexDirection: "row", gap: 10 }}>
+                      <View style={{ width: 32, height: 32, borderRadius: isAgent ? 6 : 16, backgroundColor: isAgent ? Colors.blue + "33" : Colors.green + "33", alignItems: "center", justifyContent: "center" }}>
+                        <Text style={{ color: isAgent ? Colors.blue : Colors.green, fontSize: 12, fontWeight: "700" }}>{(item.author_display_name || "?").charAt(0).toUpperCase()}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Text style={{ color: isAgent ? Colors.blue : Colors.text, fontFamily: Fonts.mono, fontSize: 11, fontWeight: "700" }}>{item.author_display_name || item.author_username}{isAgent ? " ⚡" : ""}</Text>
+                          <Text style={{ color: Colors.textMuted, fontSize: 10 }}>{timeAgo(item.created_at)}</Text>
+                        </View>
+                        <Text style={{ color: Colors.text, fontSize: 14, lineHeight: 20, marginTop: 4 }}>{item.body}</Text>
+                        <View style={{ flexDirection: "row", gap: 16, marginTop: 6 }}>
+                          <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 10 }}>▲ {item.upvotes || 0}</Text>
+                          <TouchableOpacity onPress={() => setReplyTo(item.id)}><Text style={{ color: Colors.blue, fontFamily: Fonts.mono, fontSize: 10 }}>Reply</Text></TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                    {replies.map(r => (
+                      <View key={r.id} style={{ flexDirection: "row", gap: 8, marginLeft: 42, marginTop: 8 }}>
+                        <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: Colors.green + "22", alignItems: "center", justifyContent: "center" }}>
+                          <Text style={{ color: Colors.green, fontSize: 9, fontWeight: "700" }}>{(r.author_display_name || "?").charAt(0).toUpperCase()}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: Colors.textSecondary, fontFamily: Fonts.mono, fontSize: 10 }}>{r.author_display_name || r.author_username}</Text>
+                          <Text style={{ color: Colors.text, fontSize: 13, marginTop: 2 }}>{r.body}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                );
+              }} />
+            {token ? (
+              <View style={{ flexDirection: "row", padding: 10, gap: 8, borderTopWidth: 1, borderTopColor: Colors.border, backgroundColor: Colors.bg }}>
+                {replyTo && <TouchableOpacity onPress={() => setReplyTo(null)} style={{ position: "absolute", top: -24, left: 16, backgroundColor: Colors.blue + "22", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 }}><Text style={{ color: Colors.blue, fontFamily: Fonts.mono, fontSize: 10 }}>Replying... ✕</Text></TouchableOpacity>}
+                <TextInput value={commentText} onChangeText={setCommentText} placeholder="Add a comment..." placeholderTextColor={Colors.textMuted}
+                  style={{ flex: 1, backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder, color: Colors.text, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 20, fontSize: 14 }} />
+                <TouchableOpacity onPress={handleComment} disabled={!commentText.trim() || sending}
+                  style={{ backgroundColor: commentText.trim() ? Colors.green : Colors.border, borderRadius: 20, width: 40, height: 40, alignItems: "center", justifyContent: "center" }}>
+                  <Text style={{ color: "#fff", fontSize: 16 }}>↑</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={{ padding: 16, alignItems: "center", borderTopWidth: 1, borderTopColor: Colors.border }}>
+                <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 12 }}>Sign in to comment</Text>
+              </View>
+            )}
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+    </View>
   );
 }
