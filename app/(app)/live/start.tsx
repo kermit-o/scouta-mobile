@@ -1,102 +1,306 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Switch } from "react-native";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  Switch,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+} from "react-native";
 import { useRouter } from "expo-router";
-import { startStream } from "@/lib/api";
-import { Colors, Fonts } from "@/lib/constants";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { useAuth } from "@/contexts/AuthContext";
+import { Colors } from "@/lib/constants";
+import { startLiveStream } from "@/lib/api";
 
 const ACCESS_TYPES = [
-  { value: "password", label: "🔑 Password" },
-  { value: "invite_only", label: "✉️ Invite Only" },
-  { value: "paid", label: "🪙 Paid" },
-  { value: "followers", label: "👥 Followers" },
-  { value: "subscribers", label: "⭐ Subscribers" },
-  { value: "vip", label: "💎 VIP" },
-];
+  "password",
+  "invite_only",
+  "paid",
+  "followers",
+  "subscribers",
+  "vip",
+] as const;
+type AccessType = (typeof ACCESS_TYPES)[number];
 
-export default function GoLiveScreen() {
+export default function StartLiveScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { token } = useAuth();
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [isPrivate, setIsPrivate] = useState(false);
-  const [accessType, setAccessType] = useState("password");
+  const [accessType, setAccessType] = useState<AccessType>("password");
   const [password, setPassword] = useState("");
-  const [entryCost, setEntryCost] = useState("");
+  const [coinCost, setCoinCost] = useState("");
   const [maxViewers, setMaxViewers] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function handleStart() {
-    if (!title.trim()) return;
-    setLoading(true);
     setError("");
-    const opts: any = {};
-    if (isPrivate) {
-      opts.is_private = true;
-      opts.access_type = accessType;
-      if (accessType === "password") opts.password = password;
-      if (accessType === "paid") opts.entry_coin_cost = parseInt(entryCost) || 0;
-      if (maxViewers) opts.max_viewer_limit = parseInt(maxViewers) || 0;
+    if (!title.trim()) {
+      setError("Title is required.");
+      return;
     }
+    if (!token) {
+      setError("You must be signed in to go live.");
+      return;
+    }
+
+    setLoading(true);
     try {
-      const data = await startStream(title.trim(), description.trim(), opts);
-      if (data.room_name) {
-        router.replace(`/(app)/live/${data.room_name}`);
-      } else {
-        setError(data.detail || "Failed to start");
+      const payload: any = {
+        title: title.trim(),
+        description: description.trim() || null,
+        is_private: isPrivate,
+      };
+      if (isPrivate) {
+        payload.access_type = accessType;
+        if (accessType === "password") payload.password = password;
+        if (accessType === "paid") payload.coin_cost = Number(coinCost) || 0;
+        if (maxViewers) payload.max_viewers = Number(maxViewers);
       }
-    } catch { setError("Network error"); }
-    setLoading(false);
+
+      const stream = await startLiveStream(payload, token);
+      router.replace(`/(app)/live/${stream.room_name}`);
+    } catch (e: any) {
+      setError(e?.message || "Failed to start stream.");
+    } finally {
+      setLoading(false);
+    }
   }
 
-  const inputStyle = { backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder, color: Colors.text, padding: 12, fontFamily: "monospace" as const, fontSize: 14, marginBottom: 12 };
+  const labelStyle = {
+    color: Colors.textSecondary,
+    fontSize: 11,
+    fontFamily: "monospace" as const,
+    letterSpacing: 1,
+    marginBottom: 6,
+    textTransform: "uppercase" as const,
+  };
+
+  const inputStyle = {
+    backgroundColor: Colors.inputBg,
+    borderWidth: 1,
+    borderColor: Colors.inputBorder,
+    borderRadius: 8,
+    padding: 14,
+    color: Colors.text,
+    fontSize: 15,
+    marginBottom: 16,
+  };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: Colors.bg }} contentContainerStyle={{ padding: 20, paddingTop: 56 }}>
-      <TouchableOpacity onPress={() => router.back()}>
-        <Text style={{ color: Colors.blue, fontFamily: Fonts.mono, fontSize: 12, marginBottom: 16 }}>{"< Back"}</Text>
-      </TouchableOpacity>
-
-      <Text style={{ color: Colors.red, fontSize: 10, fontFamily: Fonts.mono, letterSpacing: 2, marginBottom: 4 }}>GO LIVE</Text>
-      <Text style={{ color: Colors.text, fontSize: 22, fontWeight: "700", marginBottom: 24 }}>Start a Live Stream</Text>
-
-      {error ? <Text style={{ color: Colors.red, fontFamily: Fonts.mono, fontSize: 12, marginBottom: 12 }}>{error}</Text> : null}
-
-      <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 1, marginBottom: 4 }}>TITLE *</Text>
-      <TextInput value={title} onChangeText={setTitle} placeholder="What are you debating today?" placeholderTextColor={Colors.textMuted} style={inputStyle} />
-
-      <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 1, marginBottom: 4 }}>DESCRIPTION</Text>
-      <TextInput value={description} onChangeText={setDescription} placeholder="Optional" placeholderTextColor={Colors.textMuted} multiline numberOfLines={3} style={{ ...inputStyle, textAlignVertical: "top", minHeight: 70 }} />
-
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16, padding: 12, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border }}>
-        <Switch value={isPrivate} onValueChange={setIsPrivate} trackColor={{ true: Colors.gold }} />
-        <Text style={{ color: Colors.text, fontFamily: Fonts.mono, fontSize: 13 }}>🔒 Private Room</Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: Colors.bg }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      {/* Header */}
+      <View
+        style={{
+          paddingTop: insets.top + 8,
+          paddingHorizontal: 16,
+          paddingBottom: 12,
+          flexDirection: "row",
+          alignItems: "center",
+          borderBottomWidth: 1,
+          borderBottomColor: Colors.border,
+        }}
+      >
+        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+          <Ionicons name="arrow-back" size={24} color={Colors.text} />
+        </TouchableOpacity>
+        <Text style={{ color: Colors.text, fontSize: 18, fontWeight: "600" }}>
+          Go Live
+        </Text>
       </View>
 
-      {isPrivate && (
-        <View style={{ marginBottom: 16 }}>
-          <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 1, marginBottom: 8 }}>ACCESS TYPE</Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-            {ACCESS_TYPES.map(at => (
-              <TouchableOpacity key={at.value} onPress={() => setAccessType(at.value)}
-                style={{ paddingVertical: 6, paddingHorizontal: 10, backgroundColor: accessType === at.value ? Colors.green + "22" : Colors.card, borderWidth: 1, borderColor: accessType === at.value ? Colors.green : Colors.border }}>
-                <Text style={{ color: accessType === at.value ? Colors.green : Colors.textMuted, fontFamily: Fonts.mono, fontSize: 11 }}>{at.label}</Text>
-              </TouchableOpacity>
-            ))}
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        {error ? (
+          <View
+            style={{
+              backgroundColor: "rgba(238,68,68,0.1)",
+              borderWidth: 1,
+              borderColor: Colors.red,
+              borderRadius: 8,
+              padding: 12,
+              marginBottom: 16,
+            }}
+          >
+            <Text style={{ color: Colors.red, fontSize: 13 }}>{error}</Text>
           </View>
-          {accessType === "password" && (
-            <TextInput value={password} onChangeText={setPassword} placeholder="Room password" placeholderTextColor={Colors.textMuted} secureTextEntry style={{ ...inputStyle, marginTop: 12 }} />
-          )}
-          {accessType === "paid" && (
-            <TextInput value={entryCost} onChangeText={t => setEntryCost(t.replace(/\D/g, ""))} placeholder="Coin cost" placeholderTextColor={Colors.textMuted} keyboardType="numeric" style={{ ...inputStyle, marginTop: 12 }} />
-          )}
-          <TextInput value={maxViewers} onChangeText={t => setMaxViewers(t.replace(/\D/g, ""))} placeholder="Max viewers (0 = unlimited)" placeholderTextColor={Colors.textMuted} keyboardType="numeric" style={{ ...inputStyle, marginTop: 8 }} />
-        </View>
-      )}
+        ) : null}
 
-      <TouchableOpacity onPress={handleStart} disabled={loading || !title.trim()}
-        style={{ backgroundColor: Colors.red, padding: 16, alignItems: "center", opacity: loading || !title.trim() ? 0.5 : 1 }}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={{ color: "#fff", fontFamily: Fonts.mono, fontSize: 13, letterSpacing: 1 }}>{isPrivate ? "🔒 START PRIVATE LIVE" : "⏺ START LIVE"}</Text>}
-      </TouchableOpacity>
-    </ScrollView>
+        <Text style={labelStyle}>STREAM TITLE *</Text>
+        <TextInput
+          value={title}
+          onChangeText={setTitle}
+          placeholder="What are you streaming?"
+          placeholderTextColor={Colors.textMuted}
+          style={inputStyle}
+        />
+
+        <Text style={labelStyle}>DESCRIPTION</Text>
+        <TextInput
+          value={description}
+          onChangeText={setDescription}
+          placeholder="Tell viewers what to expect..."
+          placeholderTextColor={Colors.textMuted}
+          multiline
+          textAlignVertical="top"
+          style={{ ...inputStyle, minHeight: 80 }}
+        />
+
+        {/* Private toggle */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            backgroundColor: Colors.card,
+            borderRadius: 8,
+            padding: 14,
+            marginBottom: 16,
+            borderWidth: 1,
+            borderColor: Colors.border,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Ionicons
+              name={isPrivate ? "lock-closed" : "lock-open"}
+              size={18}
+              color={isPrivate ? Colors.gold : Colors.textMuted}
+            />
+            <Text style={{ color: Colors.text, fontSize: 15 }}>Private Room</Text>
+          </View>
+          <Switch
+            value={isPrivate}
+            onValueChange={setIsPrivate}
+            trackColor={{ false: Colors.border, true: Colors.green }}
+            thumbColor={Colors.white}
+          />
+        </View>
+
+        {/* Private options */}
+        {isPrivate ? (
+          <View>
+            <Text style={labelStyle}>ACCESS TYPE</Text>
+            <View
+              style={{
+                flexDirection: "row",
+                flexWrap: "wrap",
+                gap: 8,
+                marginBottom: 16,
+              }}
+            >
+              {ACCESS_TYPES.map((type) => (
+                <TouchableOpacity
+                  key={type}
+                  onPress={() => setAccessType(type)}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    backgroundColor:
+                      accessType === type ? Colors.gold : Colors.card,
+                    borderWidth: 1,
+                    borderColor:
+                      accessType === type ? Colors.gold : Colors.border,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color:
+                        accessType === type ? Colors.white : Colors.textSecondary,
+                      fontSize: 12,
+                      fontWeight: "600",
+                      textTransform: "capitalize",
+                    }}
+                  >
+                    {type.replace("_", " ")}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {accessType === "password" ? (
+              <>
+                <Text style={labelStyle}>PASSWORD</Text>
+                <TextInput
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Set a room password"
+                  placeholderTextColor={Colors.textMuted}
+                  secureTextEntry
+                  style={inputStyle}
+                />
+              </>
+            ) : null}
+
+            {accessType === "paid" ? (
+              <>
+                <Text style={labelStyle}>COIN COST</Text>
+                <TextInput
+                  value={coinCost}
+                  onChangeText={setCoinCost}
+                  placeholder="e.g. 100"
+                  placeholderTextColor={Colors.textMuted}
+                  keyboardType="numeric"
+                  style={inputStyle}
+                />
+              </>
+            ) : null}
+
+            <Text style={labelStyle}>MAX VIEWERS (OPTIONAL)</Text>
+            <TextInput
+              value={maxViewers}
+              onChangeText={setMaxViewers}
+              placeholder="Leave empty for unlimited"
+              placeholderTextColor={Colors.textMuted}
+              keyboardType="numeric"
+              style={inputStyle}
+            />
+          </View>
+        ) : null}
+
+        {/* Start button */}
+        <TouchableOpacity
+          onPress={handleStart}
+          disabled={loading}
+          style={{
+            backgroundColor: Colors.red,
+            borderRadius: 8,
+            paddingVertical: 16,
+            alignItems: "center",
+            opacity: loading ? 0.6 : 1,
+            marginTop: 8,
+          }}
+        >
+          {loading ? (
+            <ActivityIndicator color={Colors.white} />
+          ) : (
+            <Text
+              style={{
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: "700",
+                letterSpacing: 2,
+              }}
+            >
+              START LIVE
+            </Text>
+          )}
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

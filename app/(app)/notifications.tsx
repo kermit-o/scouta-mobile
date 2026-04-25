@@ -1,114 +1,231 @@
-import { useEffect, useState, useCallback } from "react";
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl } from "react-native";
+import { useState, useEffect, useCallback } from "react";
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
+} from "react-native";
 import { useRouter } from "expo-router";
-import { getNotifications, markAllRead } from "@/lib/api";
-import { Colors, Fonts } from "@/lib/constants";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { useAuth } from "@/contexts/AuthContext";
+import { Colors } from "@/lib/constants";
+import { getNotifications, markAllNotificationsRead } from "@/lib/api";
+import { timeAgo } from "@/lib/utils";
 import type { Notification } from "@/lib/types";
+
+const ICON_MAP: Record<string, { name: string; color: string }> = {
+  comment: { name: "chatbubble", color: Colors.blue },
+  reply: { name: "return-down-forward", color: Colors.blue },
+  vote: { name: "arrow-up", color: Colors.green },
+  follow: { name: "person-add", color: Colors.green },
+  mention: { name: "at", color: Colors.gold },
+  gift: { name: "gift", color: Colors.gold },
+  stream: { name: "radio", color: Colors.red },
+  system: { name: "information-circle", color: Colors.textMuted },
+};
 
 export default function NotificationsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { token } = useAuth();
+
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
 
-  async function load() {
+  const loadNotifications = useCallback(async () => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
     try {
-      const data = await getNotifications();
-      const items = Array.isArray(data) ? data : data.notifications || [];
-      setNotifications(items);
-    } catch {}
-    setLoading(false);
-    setRefreshing(false);
-  }
+      setError("");
+      const data = await getNotifications(token);
+      setNotifications(data.notifications || data.items || data || []);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load notifications.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [token]);
 
-  useEffect(() => { load(); }, []);
-
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    load();
-  }, []);
+  useEffect(() => {
+    loadNotifications();
+  }, [loadNotifications]);
 
   async function handleMarkAllRead() {
     try {
-      await markAllRead();
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      await markAllNotificationsRead(token);
+      setNotifications((prev) =>
+        prev.map((n) => ({ ...n, is_read: true }))
+      );
     } catch {}
   }
 
-  function timeAgo(dateStr: string) {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const m = Math.floor(diff / 60000);
-    if (m < 1) return "now";
-    if (m < 60) return `${m}m`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h`;
-    return `${Math.floor(h / 24)}d`;
-  }
-
-  function handlePress(item: Notification) {
-    if (item.post_id) {
-      router.push(`/(app)/post/${item.post_id}`);
+  function handleTap(notification: Notification) {
+    if (notification.reference_type === "post" && notification.reference_id) {
+      router.push(`/(app)/post/${notification.reference_id}`);
     }
   }
 
   function renderNotification({ item }: { item: Notification }) {
-    const typeColor = item.type === "comment" ? Colors.green : item.type === "vote" ? Colors.blue : Colors.gold;
+    const icon = ICON_MAP[item.type] || ICON_MAP.system;
+
     return (
       <TouchableOpacity
-        onPress={() => handlePress(item)}
+        onPress={() => handleTap(item)}
+        activeOpacity={0.7}
         style={{
-          backgroundColor: item.read ? Colors.card : Colors.card + "ee",
-          borderWidth: 1, borderColor: item.read ? Colors.border : Colors.blue + "44",
-          padding: 14, marginBottom: 6,
+          flexDirection: "row",
+          alignItems: "flex-start",
+          paddingHorizontal: 16,
+          paddingVertical: 14,
+          borderBottomWidth: 1,
+          borderBottomColor: Colors.border,
+          backgroundColor: item.is_read
+            ? "transparent"
+            : "rgba(74,122,154,0.05)",
         }}
       >
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-          <View style={{ backgroundColor: typeColor + "22", paddingHorizontal: 6, paddingVertical: 2 }}>
-            <Text style={{ color: typeColor, fontSize: 9, fontFamily: Fonts.mono, fontWeight: "700", textTransform: "uppercase" }}>
-              {item.type}
-            </Text>
-          </View>
-          <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: Fonts.mono }}>{timeAgo(item.created_at)}</Text>
-        </View>
-        <Text style={{ color: Colors.text, fontSize: 13, lineHeight: 18 }}>{item.message}</Text>
-        {!item.read ? (
-          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.blue, position: "absolute", top: 8, right: 8 }} />
+        {/* Unread dot */}
+        {!item.is_read ? (
+          <View
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: Colors.blue,
+              position: "absolute",
+              left: 6,
+              top: 20,
+            }}
+          />
         ) : null}
+
+        {/* Icon */}
+        <View
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            backgroundColor: `${icon.color}20`,
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: 12,
+          }}
+        >
+          <Ionicons
+            name={icon.name as any}
+            size={18}
+            color={icon.color}
+          />
+        </View>
+
+        {/* Content */}
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{
+              color: Colors.text,
+              fontSize: 14,
+              lineHeight: 20,
+              fontWeight: item.is_read ? "400" : "600",
+            }}
+          >
+            {item.message}
+          </Text>
+          <Text
+            style={{
+              color: Colors.textMuted,
+              fontSize: 11,
+              fontFamily: "monospace",
+              marginTop: 4,
+            }}
+          >
+            {timeAgo(item.created_at)}
+          </Text>
+        </View>
       </TouchableOpacity>
     );
   }
 
-  const unreadCount = notifications.filter(n => !n.read).length;
-
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      <View style={{ paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" }}>
-          <View>
-            <Text style={{ color: Colors.blue, fontSize: 9, fontFamily: Fonts.mono, letterSpacing: 3 }}>SCOUTA</Text>
-            <Text style={{ color: Colors.text, fontSize: 24, fontWeight: "600", marginTop: 4 }}>Notifications</Text>
-          </View>
-          {unreadCount > 0 ? (
-            <TouchableOpacity onPress={handleMarkAllRead}>
-              <Text style={{ color: Colors.blue, fontSize: 11, fontFamily: Fonts.mono }}>Mark all read</Text>
-            </TouchableOpacity>
-          ) : null}
+      {/* Header */}
+      <View
+        style={{
+          paddingTop: insets.top + 8,
+          paddingHorizontal: 16,
+          paddingBottom: 12,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          borderBottomWidth: 1,
+          borderBottomColor: Colors.border,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+            <Ionicons name="arrow-back" size={24} color={Colors.text} />
+          </TouchableOpacity>
+          <Text style={{ color: Colors.text, fontSize: 22, fontWeight: "700" }}>
+            Notifications
+          </Text>
         </View>
+        {notifications.some((n) => !n.is_read) ? (
+          <TouchableOpacity onPress={handleMarkAllRead}>
+            <Text style={{ color: Colors.blue, fontSize: 13, fontWeight: "600" }}>
+              Mark all read
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
+      {error ? (
+        <View style={{ margin: 16, padding: 12, backgroundColor: "rgba(238,68,68,0.1)", borderRadius: 8 }}>
+          <Text style={{ color: Colors.red, fontSize: 13 }}>{error}</Text>
+        </View>
+      ) : null}
+
       {loading ? (
-        <ActivityIndicator color={Colors.green} style={{ marginTop: 40 }} />
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator size="large" color={Colors.green} />
+        </View>
       ) : (
         <FlatList
           data={notifications}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderNotification}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.green} />}
+          contentContainerStyle={{ paddingBottom: 20 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                loadNotifications();
+              }}
+              tintColor={Colors.green}
+              colors={[Colors.green]}
+            />
+          }
           ListEmptyComponent={
-            <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono, textAlign: "center", marginTop: 60 }}>
-              No notifications yet.
-            </Text>
+            <View style={{ paddingTop: 80, alignItems: "center" }}>
+              <Text style={{ fontSize: 40, marginBottom: 12 }}>{"🔔"}</Text>
+              <Text
+                style={{ color: Colors.textMuted, fontSize: 16, fontWeight: "600" }}
+              >
+                No notifications
+              </Text>
+              <Text
+                style={{ color: Colors.textMuted, fontSize: 13, marginTop: 4 }}
+              >
+                You are all caught up!
+              </Text>
+            </View>
           }
         />
       )}

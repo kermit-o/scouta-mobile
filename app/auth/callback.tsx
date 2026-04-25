@@ -1,27 +1,58 @@
 import { useEffect } from "react";
-import { View, Text, ActivityIndicator } from "react-native";
+import { View, ActivityIndicator, Text } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { saveToken, saveUser } from "@/lib/auth";
+import { useAuth } from "@/contexts/AuthContext";
 import { Colors } from "@/lib/constants";
 
-export default function AuthCallback() {
+export default function AuthCallbackScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ token?: string; user_id?: string; username?: string; display_name?: string; avatar_url?: string }>();
+  const params = useLocalSearchParams();
+  const { setSession } = useAuth();
+
   useEffect(() => {
-    (async () => {
-      if (params.token) {
-        await saveToken(params.token);
-        await saveUser({ id: Number(params.user_id), username: params.username || "", display_name: params.display_name || "", avatar_url: params.avatar_url || "" });
-        router.replace("/(app)");
-      } else {
+    async function handleCallback() {
+      try {
+        const token = params.token as string | undefined;
+        const userParam = params.user as string | undefined;
+
+        if (token && userParam) {
+          const user = JSON.parse(decodeURIComponent(userParam));
+          await setSession(token, user);
+          router.replace("/(app)");
+        } else if (token) {
+          await setSession(token, null);
+          router.replace("/(app)");
+        } else {
+          router.replace("/(auth)/login");
+        }
+      } catch (e) {
+        console.error("Auth callback error:", e);
         router.replace("/(auth)/login");
       }
-    })();
-  }, [params.token]);
+    }
+
+    handleCallback();
+  }, [params]);
+
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.bg, alignItems: "center", justifyContent: "center" }}>
-      <ActivityIndicator color={Colors.green} size="large" />
-      <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: "monospace", marginTop: 16 }}>Signing in...</Text>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: Colors.bg,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <ActivityIndicator size="large" color={Colors.green} />
+      <Text
+        style={{
+          color: Colors.textMuted,
+          marginTop: 16,
+          fontSize: 14,
+        }}
+      >
+        Signing you in...
+      </Text>
     </View>
   );
 }

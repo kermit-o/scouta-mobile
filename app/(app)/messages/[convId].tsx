@@ -1,81 +1,293 @@
-import { useEffect, useState, useRef } from "react";
-import { View, Text, TextInput, FlatList, TouchableOpacity, KeyboardAvoidingView, Platform } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { getMessages } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  View,
+  Text,
+  FlatList,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+} from "react-native";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/contexts/AuthContext";
-import { Colors, Fonts, WS_BASE } from "@/lib/constants";
+import { Colors, WS_BASE } from "@/lib/constants";
+import { getMessages, sendMessage as sendMessageAPI, getConversation } from "@/lib/api";
+import { timeAgo, getInitial } from "@/lib/utils";
+import type { Message, Conversation } from "@/lib/types";
 
-interface Msg { id: number; sender_id: number; body: string; created_at: string; }
-
-export default function ChatScreen() {
-  const { convId } = useLocalSearchParams<{ convId: string }>();
-  const { user } = useAuth();
+export default function ConversationScreen() {
   const router = useRouter();
-  const [messages, setMessages] = useState<Msg[]>([]);
-  const [body, setBody] = useState("");
+  const { convId } = useLocalSearchParams<{ convId: string }>();
+  const insets = useSafeAreaInsets();
+  const { user, token } = useAuth();
+
+  const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+
+  const flatListRef = useRef<FlatList>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const listRef = useRef<FlatList>(null);
+
+  const loadConversation = useCallback(async () => {
+    try {
+      const data = await getConversation(Number(convId), token);
+      setConversation(data);
+    } catch {}
+  }, [convId, token]);
+
+  const loadMessages = useCallback(async () => {
+    try {
+      const data = await getMessages(Number(convId), token);
+      const items = data.messages || data.items || data || [];
+      setMessages(items);
+    } catch {}
+    setLoading(false);
+  }, [convId, token]);
 
   useEffect(() => {
-    let ws: WebSocket | null = null;
-    (async () => {
-      const data = await getMessages(Number(convId));
-      setMessages(Array.isArray(data) ? data : []);
-      setLoading(false);
-      const token = await getToken();
-      if (token) {
-        const wsUrl = WS_BASE.replace("https://", "wss://") + `/messages/ws/${convId}?token=${token}`;
-        ws = new WebSocket(wsUrl); wsRef.current = ws;
-        ws.onmessage = (e) => {
-          const msg = JSON.parse(e.data);
-          if (msg.type === "message" || msg.type === "new_message") {
-            setMessages(prev => [...prev, { id: msg.id, sender_id: msg.sender_id, body: msg.body, created_at: msg.created_at }]);
-          }
-        };
-      }
-    })();
-    return () => { ws?.close(); };
-  }, [convId]);
+    loadConversation();
+    loadMessages();
+  }, [loadConversation, loadMessages]);
 
-  function sendMsg() {
-    if (!body.trim() || !wsRef.current) return;
-    wsRef.current.send(body.trim());
-    setBody("");
+  // WebSocket for real-time messages
+  useEffect(() => {
+    if (!convId || !token) return;
+
+    const wsUrl = `${WS_BASE}/messages/${convId}/ws?token=${token}`;
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        const msg: Message = {
+          id: data.id || Date.now(),
+          conversation_id: Number(convId),
+          sender_id: data.sender_id,
+          sender_name: data.sender_name || "Unknown",
+          sender_avatar: data.sender_avatar || null,
+          sender_type: data.sender_type || "user",
+          content: data.content || "",
+          message_type: data.message_type || "text",
+          media_url: data.media_url || null,
+          is_read: false,
+          created_at: data.created_at || new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, msg]);
+      } catch {}
+    };
+
+    ws.onerror = () => {};
+    ws.onclose = () => {};
+
+    return () => {
+      ws.close();
+    };
+  }, [convId, token]);
+
+  async function handleSend() {
+    if (!inputText.trim() || !token || sending) return;
+    setSending(true);
+    try {
+      const msg = await sendMessageAPI(Number(convId), inputText.trim(), token);
+      if (msg) {
+        setMessages((prev) => [...prev, msg]);
+      }
+      setInputText("");
+    } catch {}
+    setSending(false);
   }
 
-  function timeAgo(d: string) { const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000); if (m < 1) return "now"; if (m < 60) return m + "m"; return Math.floor(m / 60) + "h"; }
+  function getOtherName() {
+    if (!conversation || !user) return "Chat";
+    const other = conversation.participants?.find(
+      (p) => p.user_id !== user.id
+    );
+    return other?.display_name || other?.username || "Chat";
+  }
+
+  function renderMessage({ item }: { item: Message }) {
+    const isMe = item.sender_id === user?.id;
+
+    return (
+      <View
+        style={{
+          paddingHorizontal: 16,
+          paddingVertical: 4,
+          alignItems: isMe ? "flex-end" : "flex-start",
+        }}
+      >
+        <View
+          style={{
+            backgroundColor: isMe
+              ? "rgba(74,154,74,0.15)"
+              : Colors.card,
+            borderRadius: 16,
+            borderTopLeftRadius: isMe ? 16 : 4,
+            borderTopRightRadius: isMe ? 4 : 16,
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            maxWidth: "78%",
+          }}
+        >
+          {!isMe ? (
+            <Text
+              style={{
+                color:
+                  item.sender_type === "agent"
+                    ? Colors.blue
+                    : Colors.green,
+                fontSize: 11,
+                fontWeight: "700",
+                marginBottom: 3,
+              }}
+            >
+              {item.sender_name}
+            </Text>
+          ) : null}
+          <Text
+            style={{
+              color: Colors.text,
+              fontSize: 14,
+              lineHeight: 20,
+            }}
+          >
+            {item.content}
+          </Text>
+          <Text
+            style={{
+              color: Colors.textMuted,
+              fontSize: 10,
+              fontFamily: "monospace",
+              marginTop: 4,
+              alignSelf: isMe ? "flex-end" : "flex-start",
+            }}
+          >
+            {timeAgo(item.created_at)}
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bg }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
-      <View style={{ paddingTop: 50, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={{ color: Colors.blue, fontFamily: Fonts.mono, fontSize: 12 }}>{"< Back"}</Text>
+    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
+      {/* Header */}
+      <View
+        style={{
+          paddingTop: insets.top + 8,
+          paddingHorizontal: 16,
+          paddingBottom: 12,
+          flexDirection: "row",
+          alignItems: "center",
+          borderBottomWidth: 1,
+          borderBottomColor: Colors.border,
+        }}
+      >
+        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+          <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
+        <Text
+          style={{
+            color: Colors.text,
+            fontSize: 18,
+            fontWeight: "600",
+            flex: 1,
+          }}
+        >
+          {getOtherName()}
+        </Text>
       </View>
-      <FlatList ref={listRef} data={messages} keyExtractor={item => String(item.id)}
-        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
-        contentContainerStyle={{ padding: 12, gap: 6, flexGrow: 1 }}
-        renderItem={({ item }) => {
-          const isMe = item.sender_id === user?.id;
-          return (
-            <View style={{ alignItems: isMe ? "flex-end" : "flex-start" }}>
-              <View style={{ backgroundColor: isMe ? Colors.green + "33" : Colors.card, borderWidth: 1, borderColor: isMe ? Colors.green + "44" : Colors.border, padding: 10, borderRadius: 12, maxWidth: "75%" }}>
-                <Text style={{ color: Colors.text, fontSize: 14 }}>{item.body}</Text>
-                <Text style={{ color: Colors.textMuted, fontSize: 9, fontFamily: Fonts.mono, marginTop: 4 }}>{timeAgo(item.created_at)}</Text>
+
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={0}
+      >
+        {loading ? (
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+            <ActivityIndicator size="large" color={Colors.green} />
+          </View>
+        ) : (
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={(item) => String(item.id)}
+            renderItem={renderMessage}
+            contentContainerStyle={{ paddingVertical: 8 }}
+            onContentSizeChange={() => {
+              try {
+                flatListRef.current?.scrollToEnd({ animated: true });
+              } catch {}
+            }}
+            ListEmptyComponent={
+              <View style={{ paddingTop: 60, alignItems: "center" }}>
+                <Text style={{ color: Colors.textMuted, fontSize: 14 }}>
+                  No messages yet. Say hello!
+                </Text>
               </View>
-            </View>
-          );
-        }} />
-      <View style={{ flexDirection: "row", padding: 8, gap: 8, borderTopWidth: 1, borderTopColor: Colors.border, backgroundColor: Colors.bg }}>
-        <TextInput value={body} onChangeText={setBody} onSubmitEditing={sendMsg} placeholder="Type a message..." placeholderTextColor={Colors.textMuted}
-          style={{ flex: 1, backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder, color: Colors.text, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 20, fontSize: 14 }} />
-        <TouchableOpacity onPress={sendMsg} disabled={!body.trim()}
-          style={{ backgroundColor: body.trim() ? Colors.green : Colors.border, borderRadius: 20, width: 40, height: 40, alignItems: "center", justifyContent: "center" }}>
-          <Text style={{ color: "#fff", fontSize: 16 }}>↑</Text>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+            }
+          />
+        )}
+
+        {/* Input bar */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-end",
+            padding: 10,
+            paddingBottom: insets.bottom + 10,
+            borderTopWidth: 1,
+            borderTopColor: Colors.border,
+            gap: 8,
+          }}
+        >
+          <TextInput
+            value={inputText}
+            onChangeText={setInputText}
+            placeholder="Type a message..."
+            placeholderTextColor={Colors.textMuted}
+            multiline
+            style={{
+              flex: 1,
+              backgroundColor: Colors.inputBg,
+              borderWidth: 1,
+              borderColor: Colors.inputBorder,
+              borderRadius: 20,
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              color: Colors.text,
+              fontSize: 14,
+              maxHeight: 100,
+            }}
+          />
+          <TouchableOpacity
+            onPress={handleSend}
+            disabled={!inputText.trim() || sending}
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              backgroundColor: inputText.trim()
+                ? Colors.green
+                : Colors.textMuted,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {sending ? (
+              <ActivityIndicator size="small" color={Colors.white} />
+            ) : (
+              <Ionicons name="send" size={18} color={Colors.white} />
+            )}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </View>
   );
 }

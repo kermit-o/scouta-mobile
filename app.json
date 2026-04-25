@@ -1,47 +1,46 @@
 {
   "expo": {
-    "owner": "manoths-organization",
     "name": "Scouta",
     "slug": "scouta",
-    "version": "1.0.0",
+    "version": "2.0.0",
+    "scheme": "scouta",
+    "userInterfaceStyle": "dark",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
-    "scheme": "scouta",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#080808"
     },
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "co.scouta.app"
+      "bundleIdentifier": "co.scouta.app",
+      "supportsTablet": true
     },
     "android": {
+      "package": "co.scouta.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#080808"
-      },
-      "package": "co.scouta.app",
-      "permissions": [
-        "android.permission.RECORD_AUDIO"
-      ]
+      }
     },
     "web": {
-      "bundler": "metro",
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
       "expo-font",
-      "expo-image-picker"
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Scouta to access your photos to share content.",
+          "cameraPermission": "Allow Scouta to access your camera to create content."
+        }
+      ]
     ],
-    "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "49ff3468-34aa-4ab0-9806-ea89e58c4d55"
-      }
+    "experiments": {
+      "typedRoutes": true
     }
   }
 }

@@ -7,18 +7,67 @@ export default function AppLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: { backgroundColor: Colors.bg, borderTopColor: Colors.border, borderTopWidth: 1 },
+        tabBarStyle: {
+          backgroundColor: Colors.bg,
+          borderTopColor: Colors.border,
+          borderTopWidth: 1,
+          height: 60,
+          paddingBottom: 8,
+          paddingTop: 4,
+        },
         tabBarActiveTintColor: Colors.green,
         tabBarInactiveTintColor: Colors.textMuted,
-        tabBarLabelStyle: { fontSize: 10, fontFamily: "monospace" },
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: "600",
+        },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: "Feed", tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} /> }} />
-      <Tabs.Screen name="live/index" options={{ title: "Live", tabBarIcon: ({ color, size }) => <Ionicons name="radio-outline" size={size} color={color} /> }} />
-      <Tabs.Screen name="videos/index" options={{ title: "Videos", tabBarIcon: ({ color, size }) => <Ionicons name="play-outline" size={size} color={color} /> }} />
-      <Tabs.Screen name="search" options={{ title: "Search", tabBarIcon: ({ color, size }) => <Ionicons name="search-outline" size={size} color={color} /> }} />
-      <Tabs.Screen name="messages/index" options={{ title: "Chat", tabBarIcon: ({ color, size }) => <Ionicons name="chatbubble-outline" size={size} color={color} /> }} />
-      <Tabs.Screen name="profile/index" options={{ title: "Profile", tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} /> }} />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: "Feed",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="live/index"
+        options={{
+          title: "Live",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="radio-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="videos/index"
+        options={{
+          title: "Videos",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="play-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="messages/index"
+        options={{
+          title: "Chat",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="chatbubble-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="profile/index"
+        options={{
+          title: "Profile",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person-outline" size={size} color={color} />
+          ),
+        }}
+      />
 
       {/* Hidden screens */}
       <Tabs.Screen name="post/[id]" options={{ href: null }} />
@@ -35,6 +84,7 @@ export default function AppLayout() {
       <Tabs.Screen name="saved" options={{ href: null }} />
       <Tabs.Screen name="debates" options={{ href: null }} />
       <Tabs.Screen name="best-debates" options={{ href: null }} />
+      <Tabs.Screen name="search" options={{ href: null }} />
     </Tabs>
   );
 }

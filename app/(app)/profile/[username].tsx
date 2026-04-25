@@ -1,131 +1,299 @@
-import { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator, ScrollView } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { getUserProfile } from "@/lib/api";
-import { Colors, Fonts } from "@/lib/constants";
-
-interface UserProfile {
-  id: number;
-  username: string;
-  display_name: string | null;
-  bio: string | null;
-  avatar_url: string | null;
-  website: string | null;
-  post_count?: number;
-  comment_count?: number;
-  follower_count?: number;
-  following_count?: number;
-  created_at?: string;
-}
+import { useState, useEffect, useCallback } from "react";
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+} from "react-native";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { useAuth } from "@/contexts/AuthContext";
+import { Colors } from "@/lib/constants";
+import { getUserProfile, followUser, unfollowUser, startConversation } from "@/lib/api";
+import { formatNumber, getInitial } from "@/lib/utils";
+import type { User } from "@/lib/types";
 
 export default function UserProfileScreen() {
-  const { username } = useLocalSearchParams<{ username: string }>();
   const router = useRouter();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { username } = useLocalSearchParams<{ username: string }>();
+  const insets = useSafeAreaInsets();
+  const { user: me, token } = useAuth();
 
-  async function load() {
+  const [profile, setProfile] = useState<User | null>(null);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const loadProfile = useCallback(async () => {
     try {
-      const data = await getUserProfile(username);
-      setProfile(data);
+      setError("");
+      const data = await getUserProfile(username!, token);
+      setProfile(data.user || data);
+      setIsFollowing(data.is_following || false);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load profile.");
+    } finally {
+      setLoading(false);
+    }
+  }, [username, token]);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
+
+  async function handleFollowToggle() {
+    if (!profile || !token) return;
+    try {
+      if (isFollowing) {
+        await unfollowUser(profile.id, token);
+      } else {
+        await followUser(profile.id, token);
+      }
+      setIsFollowing(!isFollowing);
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              follower_count: isFollowing
+                ? prev.follower_count - 1
+                : prev.follower_count + 1,
+            }
+          : prev
+      );
     } catch {}
-    setLoading(false);
   }
 
-  useEffect(() => { load(); }, [username]);
+  async function handleMessage() {
+    if (!profile || !token) return;
+    try {
+      const conv = await startConversation(profile.id, token);
+      const convId = conv.id || conv.conversation_id;
+      router.push(`/(app)/messages/${convId}`);
+    } catch {}
+  }
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator color={Colors.green} />
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: Colors.bg,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <ActivityIndicator size="large" color={Colors.green} />
       </View>
     );
   }
 
-  if (!profile) {
+  if (error || !profile) {
     return (
-      <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: "center", alignItems: "center" }}>
-        <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 12 }}>User not found</Text>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: Colors.bg,
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}
+      >
+        <Text style={{ color: Colors.red, fontSize: 15, marginBottom: 16 }}>
+          {error || "User not found."}
+        </Text>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Text style={{ color: Colors.blue, fontSize: 14, fontWeight: "600" }}>
+            Go back
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
-  const displayName = profile.display_name || profile.username;
+  const isMe = me?.id === profile.id;
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      <View style={{ paddingTop: 56, paddingHorizontal: 16, paddingBottom: 8 }}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={{ color: Colors.blue, fontSize: 12, fontFamily: Fonts.mono }}>{"< Back"}</Text>
+      {/* Header */}
+      <View
+        style={{
+          paddingTop: insets.top + 8,
+          paddingHorizontal: 16,
+          paddingBottom: 12,
+          flexDirection: "row",
+          alignItems: "center",
+          borderBottomWidth: 1,
+          borderBottomColor: Colors.border,
+        }}
+      >
+        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+          <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
+        <Text style={{ color: Colors.text, fontSize: 18, fontWeight: "600" }}>
+          @{profile.username}
+        </Text>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}>
-        <View style={{ alignItems: "center", marginBottom: 24, marginTop: 8 }}>
-          <View style={{
-            width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.green + "33",
-            alignItems: "center", justifyContent: "center", marginBottom: 12,
-          }}>
-            <Text style={{ color: Colors.green, fontSize: 26, fontWeight: "700" }}>
-              {(displayName || "?").charAt(0).toUpperCase()}
-            </Text>
-          </View>
-          <Text style={{ color: Colors.text, fontSize: 22, fontWeight: "600" }}>{displayName}</Text>
-          <Text style={{ color: Colors.textSecondary, fontSize: 12, fontFamily: Fonts.mono, marginTop: 4 }}>@{profile.username}</Text>
+      <ScrollView contentContainerStyle={{ padding: 24, alignItems: "center" }}>
+        {/* Avatar */}
+        <View
+          style={{
+            width: 80,
+            height: 80,
+            borderRadius: 40,
+            backgroundColor: Colors.green,
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: 14,
+            borderWidth: 2,
+            borderColor: "rgba(74,154,74,0.3)",
+          }}
+        >
+          <Text style={{ color: Colors.white, fontSize: 32, fontWeight: "700" }}>
+            {getInitial(profile.display_name || profile.username)}
+          </Text>
         </View>
 
+        <Text
+          style={{
+            color: Colors.text,
+            fontSize: 20,
+            fontWeight: "700",
+            marginBottom: 4,
+          }}
+        >
+          {profile.display_name || profile.username}
+        </Text>
+        <Text
+          style={{
+            color: Colors.textMuted,
+            fontSize: 14,
+            fontFamily: "monospace",
+            marginBottom: 16,
+          }}
+        >
+          @{profile.username}
+        </Text>
+
         {profile.bio ? (
-          <Text style={{ color: Colors.textSecondary, fontSize: 14, lineHeight: 20, textAlign: "center", marginBottom: 20 }}>
+          <Text
+            style={{
+              color: Colors.textSecondary,
+              fontSize: 14,
+              lineHeight: 22,
+              textAlign: "center",
+              marginBottom: 20,
+              paddingHorizontal: 16,
+            }}
+          >
             {profile.bio}
           </Text>
         ) : null}
 
-        {profile.website ? (
-          <Text style={{ color: Colors.blue, fontSize: 12, fontFamily: Fonts.mono, textAlign: "center", marginBottom: 20 }}>
-            {profile.website}
-          </Text>
-        ) : null}
-
         {/* Stats */}
-        <View style={{
-          flexDirection: "row", justifyContent: "space-around",
-          backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border,
-          paddingVertical: 16, marginBottom: 24,
-        }}>
-          <View style={{ alignItems: "center" }}>
-            <Text style={{ color: Colors.text, fontSize: 18, fontFamily: Fonts.mono, fontWeight: "700" }}>
-              {profile.post_count ?? 0}
-            </Text>
-            <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: Fonts.mono, marginTop: 2 }}>Posts</Text>
-          </View>
-          <View style={{ alignItems: "center" }}>
-            <Text style={{ color: Colors.text, fontSize: 18, fontFamily: Fonts.mono, fontWeight: "700" }}>
-              {profile.comment_count ?? 0}
-            </Text>
-            <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: Fonts.mono, marginTop: 2 }}>Comments</Text>
-          </View>
-          <View style={{ alignItems: "center" }}>
-            <Text style={{ color: Colors.text, fontSize: 18, fontFamily: Fonts.mono, fontWeight: "700" }}>
-              {profile.follower_count ?? 0}
-            </Text>
-            <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: Fonts.mono, marginTop: 2 }}>Followers</Text>
-          </View>
-          <View style={{ alignItems: "center" }}>
-            <Text style={{ color: Colors.text, fontSize: 18, fontFamily: Fonts.mono, fontWeight: "700" }}>
-              {profile.following_count ?? 0}
-            </Text>
-            <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: Fonts.mono, marginTop: 2 }}>Following</Text>
-          </View>
-        </View>
-
-        <TouchableOpacity
-          onPress={() => router.push(`/(app)/messages/index` as any)}
+        <View
           style={{
-            backgroundColor: Colors.blue, paddingVertical: 14, alignItems: "center",
+            flexDirection: "row",
+            justifyContent: "center",
+            gap: 32,
+            paddingVertical: 16,
+            borderTopWidth: 1,
+            borderTopColor: Colors.border,
+            borderBottomWidth: 1,
+            borderBottomColor: Colors.border,
+            width: "100%",
+            marginBottom: 24,
           }}
         >
-          <Text style={{ color: Colors.text, fontSize: 14, fontFamily: Fonts.mono, fontWeight: "700" }}>Message</Text>
-        </TouchableOpacity>
+          {[
+            { label: "Posts", value: profile.post_count },
+            { label: "Followers", value: profile.follower_count },
+            { label: "Following", value: profile.following_count },
+          ].map((stat) => (
+            <View key={stat.label} style={{ alignItems: "center" }}>
+              <Text
+                style={{
+                  color: Colors.text,
+                  fontSize: 18,
+                  fontWeight: "700",
+                  fontFamily: "monospace",
+                }}
+              >
+                {formatNumber(stat.value)}
+              </Text>
+              <Text
+                style={{
+                  color: Colors.textMuted,
+                  fontSize: 11,
+                  fontFamily: "monospace",
+                  marginTop: 2,
+                  textTransform: "uppercase",
+                  letterSpacing: 1,
+                }}
+              >
+                {stat.label}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Actions */}
+        {!isMe && token ? (
+          <View
+            style={{
+              flexDirection: "row",
+              gap: 12,
+              width: "100%",
+              justifyContent: "center",
+            }}
+          >
+            <TouchableOpacity
+              onPress={handleFollowToggle}
+              style={{
+                backgroundColor: isFollowing ? Colors.card : Colors.green,
+                borderWidth: 1,
+                borderColor: isFollowing ? Colors.border : Colors.green,
+                borderRadius: 8,
+                paddingVertical: 12,
+                paddingHorizontal: 28,
+              }}
+            >
+              <Text
+                style={{
+                  color: isFollowing ? Colors.textSecondary : Colors.white,
+                  fontSize: 14,
+                  fontWeight: "700",
+                }}
+              >
+                {isFollowing ? "Unfollow" : "Follow"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleMessage}
+              style={{
+                backgroundColor: Colors.card,
+                borderWidth: 1,
+                borderColor: Colors.border,
+                borderRadius: 8,
+                paddingVertical: 12,
+                paddingHorizontal: 28,
+              }}
+            >
+              <Text
+                style={{
+                  color: Colors.text,
+                  fontSize: 14,
+                  fontWeight: "600",
+                }}
+              >
+                Message
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </ScrollView>
     </View>
   );
