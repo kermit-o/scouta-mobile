@@ -2,7 +2,7 @@ export const API_BASE = "https://api.scouta.co/api/v1";
 export const WS_BASE = "wss://api.scouta.co/api/v1";
 export const ORG_ID = 1;
 export const LIVEKIT_URL = "wss://scouta-pi70lg8z.livekit.cloud";
-export const CAPTCHA_TOKEN = "scouta-mobile-app-2026";
+export const CAPTCHA_TOKEN = "xPMEvUwAp_EFk7EGkEMJUBm-osAyoLFBPCl9xkzqKkU";
 
 export const Colors = {
   bg: "#080808",

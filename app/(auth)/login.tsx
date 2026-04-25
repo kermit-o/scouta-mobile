@@ -1,256 +1,125 @@
 import { useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  ActivityIndicator,
-} from "react-native";
-import { useRouter } from "expo-router";
-import * as Linking from "expo-linking";
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import { useRouter, Link } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors, API_BASE } from "@/lib/constants";
-import { login } from "@/lib/api";
+import { login as apiLogin } from "@/lib/api";
+import { saveToken, saveUser } from "@/lib/auth";
 
 export default function LoginScreen() {
+  const { login, refreshUser } = useAuth();
   const router = useRouter();
-  const { setSession } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   async function handleLogin() {
-    setError("");
-    if (!email.trim() || !password.trim()) {
-      setError("Please enter email and password.");
-      return;
-    }
+    if (!email.trim() || !password.trim()) return;
     setLoading(true);
-    try {
-      const res = await login(email.trim(), password);
-      await setSession(res.token, res.user);
+    setError("");
+    const result = await login(email.trim(), password);
+    setLoading(false);
+    if (result.ok) {
       router.replace("/(app)");
-    } catch (e: any) {
-      setError(e?.message || "Login failed. Please try again.");
-    } finally {
-      setLoading(false);
+    } else {
+      setError(result.error || "Login failed");
     }
   }
 
-  function handleGoogleSignIn() {
-    const url = `${API_BASE}/auth/google?redirect_mobile=1`;
-    Linking.openURL(url);
+  async function handleGoogleLogin() {
+    try {
+      const redirectUrl = "scouta://auth/callback";
+      const authUrl = `${API_BASE}/auth/google?redirect_mobile=1`;
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl);
+      
+      if (result.type === "success" && result.url) {
+        const url = new URL(result.url);
+        const token = url.searchParams.get("token");
+        const userId = url.searchParams.get("user_id");
+        const username = url.searchParams.get("username");
+        const displayName = url.searchParams.get("display_name");
+        const avatarUrl = url.searchParams.get("avatar_url");
+        
+        if (token) {
+          await saveToken(token);
+          await saveUser({
+            id: Number(userId),
+            username: username || "",
+            display_name: displayName || "",
+            avatar_url: avatarUrl || "",
+          });
+          await refreshUser();
+          router.replace("/(app)");
+        } else {
+          setError("Google login failed - no token received");
+        }
+      }
+    } catch (e) {
+      setError("Google login failed");
+    }
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: Colors.bg }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <ScrollView
-        contentContainerStyle={{
-          flexGrow: 1,
-          justifyContent: "center",
-          padding: 24,
-        }}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Text
-          style={{
-            color: Colors.green,
-            fontSize: 28,
-            fontWeight: "700",
-            textAlign: "center",
-            marginBottom: 8,
-            letterSpacing: 4,
-          }}
-        >
-          SCOUTA
-        </Text>
-        <Text
-          style={{
-            color: Colors.textMuted,
-            fontSize: 14,
-            textAlign: "center",
-            marginBottom: 40,
-          }}
-        >
-          Sign in to your account
-        </Text>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <ScrollView contentContainerStyle={{ flex: 1, justifyContent: "center", padding: 24 }}>
+        <View style={{ alignItems: "center", marginBottom: 40 }}>
+          <Text style={{ color: Colors.text, fontSize: 32, fontWeight: "700" }}>SCOUTA</Text>
+          <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: "monospace", letterSpacing: 3, marginTop: 8 }}>AI DEBATES</Text>
+        </View>
 
-        {/* Google Sign-In */}
+        {error ? (
+          <Text style={{ color: Colors.red, fontSize: 12, fontFamily: "monospace", textAlign: "center", marginBottom: 16 }}>{error}</Text>
+        ) : null}
+
         <TouchableOpacity
-          onPress={handleGoogleSignIn}
+          onPress={handleGoogleLogin}
           style={{
-            backgroundColor: Colors.white,
-            borderRadius: 8,
-            paddingVertical: 14,
-            alignItems: "center",
-            marginBottom: 24,
+            backgroundColor: "#fff", padding: 14, alignItems: "center", borderRadius: 8,
+            flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 20,
           }}
         >
-          <Text style={{ color: "#333", fontSize: 16, fontWeight: "600" }}>
-            Continue with Google
-          </Text>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: "#4285F4" }}>G</Text>
+          <Text style={{ color: "#333", fontSize: 14, fontWeight: "600" }}>Continue with Google</Text>
         </TouchableOpacity>
 
-        {/* Divider */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            marginBottom: 24,
-          }}
-        >
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 20 }}>
           <View style={{ flex: 1, height: 1, backgroundColor: Colors.border }} />
-          <Text
-            style={{
-              color: Colors.textMuted,
-              marginHorizontal: 16,
-              fontSize: 12,
-              fontFamily: "monospace",
-              letterSpacing: 2,
-            }}
-          >
-            OR
-          </Text>
+          <Text style={{ color: Colors.textMuted, fontSize: 11, fontFamily: "monospace", marginHorizontal: 12 }}>OR</Text>
           <View style={{ flex: 1, height: 1, backgroundColor: Colors.border }} />
         </View>
 
-        {/* Error */}
-        {error ? (
-          <View
-            style={{
-              backgroundColor: "rgba(238,68,68,0.1)",
-              borderWidth: 1,
-              borderColor: Colors.red,
-              borderRadius: 8,
-              padding: 12,
-              marginBottom: 16,
-            }}
-          >
-            <Text style={{ color: Colors.red, fontSize: 13 }}>{error}</Text>
-          </View>
-        ) : null}
+        <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: "monospace", letterSpacing: 1, marginBottom: 6 }}>EMAIL</Text>
+        <TextInput value={email} onChangeText={setEmail} placeholder="you@email.com" placeholderTextColor={Colors.textMuted}
+          autoCapitalize="none" keyboardType="email-address"
+          style={{ backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder, color: Colors.text, padding: 14, fontSize: 15, fontFamily: "monospace", marginBottom: 16 }} />
 
-        {/* Email */}
-        <Text
-          style={{
-            color: Colors.textSecondary,
-            fontSize: 11,
-            fontFamily: "monospace",
-            letterSpacing: 1,
-            marginBottom: 6,
-            textTransform: "uppercase",
-          }}
-        >
-          EMAIL
-        </Text>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          placeholder="you@example.com"
-          placeholderTextColor={Colors.textMuted}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={{
-            backgroundColor: Colors.inputBg,
-            borderWidth: 1,
-            borderColor: Colors.inputBorder,
-            borderRadius: 8,
-            padding: 14,
-            color: Colors.text,
-            fontSize: 15,
-            marginBottom: 16,
-          }}
-        />
-
-        {/* Password */}
-        <Text
-          style={{
-            color: Colors.textSecondary,
-            fontSize: 11,
-            fontFamily: "monospace",
-            letterSpacing: 1,
-            marginBottom: 6,
-            textTransform: "uppercase",
-          }}
-        >
-          PASSWORD
-        </Text>
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Enter your password"
-          placeholderTextColor={Colors.textMuted}
+        <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: "monospace", letterSpacing: 1, marginBottom: 6 }}>PASSWORD</Text>
+        <TextInput value={password} onChangeText={setPassword} placeholder="Password" placeholderTextColor={Colors.textMuted}
           secureTextEntry
-          style={{
-            backgroundColor: Colors.inputBg,
-            borderWidth: 1,
-            borderColor: Colors.inputBorder,
-            borderRadius: 8,
-            padding: 14,
-            color: Colors.text,
-            fontSize: 15,
-            marginBottom: 8,
-          }}
-        />
+          style={{ backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder, color: Colors.text, padding: 14, fontSize: 15, fontFamily: "monospace", marginBottom: 8 }} />
 
-        {/* Forgot Password */}
-        <TouchableOpacity
-          onPress={() => router.push("/(auth)/forgot-password")}
-          style={{ alignSelf: "flex-end", marginBottom: 24 }}
-        >
-          <Text style={{ color: Colors.blue, fontSize: 13 }}>
-            Forgot password?
-          </Text>
-        </TouchableOpacity>
+        <Link href="/(auth)/forgot-password" asChild>
+          <TouchableOpacity style={{ alignSelf: "flex-end", marginBottom: 24 }}>
+            <Text style={{ color: Colors.blue, fontSize: 11, fontFamily: "monospace" }}>Forgot password?</Text>
+          </TouchableOpacity>
+        </Link>
 
-        {/* Sign In Button */}
-        <TouchableOpacity
-          onPress={handleLogin}
-          disabled={loading}
-          style={{
-            backgroundColor: Colors.green,
-            borderRadius: 8,
-            paddingVertical: 16,
-            alignItems: "center",
-            opacity: loading ? 0.6 : 1,
-          }}
-        >
-          {loading ? (
-            <ActivityIndicator color={Colors.white} />
-          ) : (
-            <Text
-              style={{
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: "700",
-                letterSpacing: 2,
-              }}
-            >
-              SIGN IN
-            </Text>
+        <TouchableOpacity onPress={handleLogin} disabled={loading || !email.trim() || !password.trim()}
+          style={{ backgroundColor: Colors.green, padding: 16, alignItems: "center", borderRadius: 8,
+            opacity: loading || !email.trim() || !password.trim() ? 0.5 : 1 }}>
+          {loading ? <ActivityIndicator color="#fff" /> : (
+            <Text style={{ color: "#fff", fontSize: 13, fontFamily: "monospace", letterSpacing: 1 }}>SIGN IN</Text>
           )}
         </TouchableOpacity>
 
-        {/* Register Link */}
-        <TouchableOpacity
-          onPress={() => router.push("/(auth)/register")}
-          style={{ marginTop: 24, alignItems: "center" }}
-        >
-          <Text style={{ color: Colors.textSecondary, fontSize: 14 }}>
-            No account?{" "}
-            <Text style={{ color: Colors.green, fontWeight: "600" }}>
-              Sign up
-            </Text>
-          </Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", justifyContent: "center", marginTop: 24, gap: 4 }}>
+          <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: "monospace" }}>No account?</Text>
+          <Link href="/(auth)/register">
+            <Text style={{ color: Colors.green, fontSize: 12, fontFamily: "monospace" }}>Sign up</Text>
+          </Link>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
