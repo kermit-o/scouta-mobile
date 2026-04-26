@@ -78,7 +78,7 @@ export async function login(email: string, password: string) {
   return post("/auth/login", {
     email,
     password,
-    captcha_token: CAPTCHA_TOKEN,
+    cf_turnstile_token: CAPTCHA_TOKEN,
     org_id: ORG_ID,
   });
 }
@@ -94,7 +94,7 @@ export async function register(
     username,
     display_name,
     password,
-    captcha_token: CAPTCHA_TOKEN,
+    cf_turnstile_token: CAPTCHA_TOKEN,
     org_id: ORG_ID,
   });
 }
