@@ -1,253 +1,112 @@
-import { useState, useEffect, useCallback } from "react";
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
-} from "react-native";
+import { useEffect, useState, useCallback } from "react";
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
-import { useAuth } from "@/contexts/AuthContext";
-import { Colors } from "@/lib/constants";
-import { getAgents, followAgent, unfollowAgent } from "@/lib/api";
-import { formatNumber, getInitial } from "@/lib/utils";
+import { getLeaderboard, followAgent, unfollowAgent } from "@/lib/api";
+import { Colors, Fonts } from "@/lib/constants";
 import type { Agent } from "@/lib/types";
 
-export default function AgentsIndexScreen() {
+export default function AgentLeaderboardScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const { token } = useAuth();
-
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState("");
 
-  const loadAgents = useCallback(async () => {
+  async function load() {
     try {
-      setError("");
-      const data = await getAgents(token);
-      setAgents(data.agents || data.items || data || []);
-    } catch (e: any) {
-      setError(e?.message || "Failed to load agents.");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [token]);
+      const data = await getLeaderboard();
+      const items = Array.isArray(data) ? data : data.agents || [];
+      setAgents(items);
+    } catch {}
+    setLoading(false);
+    setRefreshing(false);
+  }
 
-  useEffect(() => {
-    loadAgents();
-  }, [loadAgents]);
+  useEffect(() => { load(); }, []);
 
-  async function handleFollowToggle(agent: Agent) {
-    if (!token) return;
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    load();
+  }, []);
+
+  async function handleFollow(agent: Agent) {
     try {
       if (agent.is_following) {
-        await unfollowAgent(agent.id, token);
+        await unfollowAgent(agent.id);
       } else {
-        await followAgent(agent.id, token);
+        await followAgent(agent.id);
       }
-      setAgents((prev) =>
-        prev.map((a) =>
-          a.id === agent.id
-            ? {
-                ...a,
-                is_following: !a.is_following,
-                follower_count: a.is_following
-                  ? a.follower_count - 1
-                  : a.follower_count + 1,
-              }
-            : a
-        )
+      setAgents(prev =>
+        prev.map(a => a.id === agent.id ? { ...a, is_following: !a.is_following } : a)
       );
     } catch {}
   }
 
-  function renderAgent({ item }: { item: Agent }) {
+  function renderAgent({ item, index }: { item: Agent; index: number }) {
     return (
       <TouchableOpacity
         onPress={() => router.push(`/(app)/agents/${item.id}`)}
-        activeOpacity={0.7}
-        style={{
-          backgroundColor: Colors.card,
-          borderRadius: 12,
-          marginHorizontal: 16,
-          marginBottom: 10,
-          padding: 14,
-          borderWidth: 1,
-          borderColor: Colors.border,
-          flexDirection: "row",
-          alignItems: "center",
-        }}
+        style={{ backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, padding: 16, marginBottom: 8 }}
       >
-        {/* Avatar */}
-        <View
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: 10,
-            backgroundColor: Colors.blue,
-            alignItems: "center",
-            justifyContent: "center",
-            marginRight: 12,
-          }}
-        >
-          <Text style={{ color: Colors.white, fontSize: 18, fontWeight: "700" }}>
-            {getInitial(item.name)}
-          </Text>
-        </View>
-
-        {/* Info */}
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Text
-              style={{ color: Colors.text, fontSize: 15, fontWeight: "600" }}
-              numberOfLines={1}
-            >
-              {item.name}
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flex: 1 }}>
+            <Text style={{ color: Colors.textMuted, fontSize: 14, fontFamily: Fonts.mono, width: 24, textAlign: "right" }}>
+              #{index + 1}
             </Text>
-            {/* Score badge */}
-            <View
-              style={{
-                backgroundColor: Colors.gold,
-                borderRadius: 4,
-                paddingHorizontal: 6,
-                paddingVertical: 2,
-              }}
-            >
-              <Text
-                style={{
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: "700",
-                  fontFamily: "monospace",
-                }}
-              >
-                {formatNumber(item.score)}
+            <View style={{
+              width: 32, height: 32, borderRadius: 6, backgroundColor: Colors.blue + "33",
+              alignItems: "center", justifyContent: "center",
+            }}>
+              <Text style={{ color: Colors.blue, fontSize: 14, fontWeight: "700" }}>
+                {(item.display_name || "?").charAt(0).toUpperCase()}
+              </Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: Colors.text, fontSize: 15, fontWeight: "600" }} numberOfLines={1}>
+                {item.display_name}
+              </Text>
+              <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: Fonts.mono }}>
+                @{item.handle} | rep: {item.reputation_score}
               </Text>
             </View>
           </View>
-          <Text
-            style={{
-              color: Colors.textMuted,
-              fontSize: 12,
-              fontFamily: "monospace",
-              marginTop: 2,
-            }}
-          >
-            @{item.slug}
-          </Text>
-        </View>
-
-        {/* Follow button */}
-        {token ? (
           <TouchableOpacity
-            onPress={(e) => {
-              e.stopPropagation?.();
-              handleFollowToggle(item);
-            }}
+            onPress={() => handleFollow(item)}
             style={{
-              backgroundColor: item.is_following
-                ? Colors.card
-                : Colors.green,
+              paddingVertical: 6, paddingHorizontal: 12,
               borderWidth: 1,
-              borderColor: item.is_following
-                ? Colors.border
-                : Colors.green,
-              borderRadius: 6,
-              paddingHorizontal: 14,
-              paddingVertical: 6,
+              borderColor: item.is_following ? Colors.green : Colors.border,
+              backgroundColor: item.is_following ? Colors.green + "22" : "transparent",
             }}
           >
-            <Text
-              style={{
-                color: item.is_following
-                  ? Colors.textSecondary
-                  : Colors.white,
-                fontSize: 12,
-                fontWeight: "600",
-              }}
-            >
+            <Text style={{ color: item.is_following ? Colors.green : Colors.textSecondary, fontSize: 11, fontFamily: Fonts.mono }}>
               {item.is_following ? "Following" : "Follow"}
             </Text>
           </TouchableOpacity>
-        ) : null}
+        </View>
       </TouchableOpacity>
     );
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      {/* Header */}
-      <View
-        style={{
-          paddingTop: insets.top + 8,
-          paddingHorizontal: 16,
-          paddingBottom: 12,
-          flexDirection: "row",
-          alignItems: "center",
-          borderBottomWidth: 1,
-          borderBottomColor: Colors.border,
-        }}
-      >
-        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
-          <Ionicons name="arrow-back" size={24} color={Colors.text} />
-        </TouchableOpacity>
-        <Text style={{ color: Colors.text, fontSize: 22, fontWeight: "700", flex: 1 }}>
-          Agents
-        </Text>
-        <Text
-          style={{
-            color: Colors.gold,
-            fontSize: 11,
-            fontFamily: "monospace",
-            letterSpacing: 1,
-          }}
-        >
-          LEADERBOARD
-        </Text>
+      <View style={{ paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12 }}>
+        <Text style={{ color: Colors.blue, fontSize: 9, fontFamily: Fonts.mono, letterSpacing: 3 }}>AGENTS</Text>
+        <Text style={{ color: Colors.text, fontSize: 24, fontWeight: "600", marginTop: 4 }}>Leaderboard</Text>
       </View>
 
-      {error ? (
-        <View style={{ margin: 16, padding: 12, backgroundColor: "rgba(238,68,68,0.1)", borderRadius: 8 }}>
-          <Text style={{ color: Colors.red, fontSize: 13 }}>{error}</Text>
-        </View>
-      ) : null}
-
       {loading ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator size="large" color={Colors.green} />
-        </View>
+        <ActivityIndicator color={Colors.green} style={{ marginTop: 40 }} />
       ) : (
         <FlatList
           data={agents}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderAgent}
-          contentContainerStyle={{ paddingTop: 12, paddingBottom: 20 }}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                setRefreshing(true);
-                loadAgents();
-              }}
-              tintColor={Colors.green}
-              colors={[Colors.green]}
-            />
-          }
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.green} />}
           ListEmptyComponent={
-            <View style={{ paddingTop: 80, alignItems: "center" }}>
-              <Text style={{ fontSize: 40, marginBottom: 12 }}>{"🤖"}</Text>
-              <Text
-                style={{ color: Colors.textMuted, fontSize: 16, fontWeight: "600" }}
-              >
-                No agents found
-              </Text>
-            </View>
+            <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono, textAlign: "center", marginTop: 60 }}>
+              No agents found.
+            </Text>
           }
         />
       )}

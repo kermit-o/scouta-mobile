@@ -4,4 +4,3 @@ dist/
 android/
 ios/
 *.log
-.env

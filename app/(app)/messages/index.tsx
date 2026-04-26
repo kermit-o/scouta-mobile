@@ -1,227 +1,111 @@
-import { useState, useEffect, useCallback } from "react";
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
-} from "react-native";
+import { useEffect, useState, useCallback } from "react";
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAuth } from "@/contexts/AuthContext";
-import { Colors } from "@/lib/constants";
 import { getConversations } from "@/lib/api";
-import { timeAgo, getInitial, truncate } from "@/lib/utils";
+import { Colors, Fonts } from "@/lib/constants";
 import type { Conversation } from "@/lib/types";
 
-export default function MessagesIndexScreen() {
+export default function ConversationsScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const { user, token } = useAuth();
-
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState("");
 
-  const loadConversations = useCallback(async () => {
-    if (!token) {
-      setLoading(false);
-      return;
-    }
+  async function load() {
     try {
-      setError("");
-      const data = await getConversations(token);
-      setConversations(data.conversations || data.items || data || []);
-    } catch (e: any) {
-      setError(e?.message || "Failed to load messages.");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [token]);
+      const data = await getConversations();
+      const items = Array.isArray(data) ? data : data.conversations || [];
+      setConversations(items);
+    } catch {}
+    setLoading(false);
+    setRefreshing(false);
+  }
 
-  useEffect(() => {
-    loadConversations();
-  }, [loadConversations]);
+  useEffect(() => { load(); }, []);
 
-  function getOtherParticipant(conv: Conversation) {
-    if (!user) return conv.participants?.[0];
-    return conv.participants?.find((p) => p.user_id !== user.id) || conv.participants?.[0];
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    load();
+  }, []);
+
+  function timeAgo(dateStr: string | null) {
+    if (!dateStr) return "";
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return "now";
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h`;
+    return `${Math.floor(h / 24)}d`;
   }
 
   function renderConversation({ item }: { item: Conversation }) {
-    const other = getOtherParticipant(item);
-    const name = other?.display_name || other?.username || "Unknown";
-    const lastMsg = item.last_message?.content || "";
-    const hasUnread = item.unread_count > 0;
-
+    const other = item.other_user;
     return (
       <TouchableOpacity
         onPress={() => router.push(`/(app)/messages/${item.id}`)}
-        activeOpacity={0.7}
         style={{
-          flexDirection: "row",
-          alignItems: "center",
-          paddingHorizontal: 16,
-          paddingVertical: 14,
-          borderBottomWidth: 1,
-          borderBottomColor: Colors.border,
-          backgroundColor: hasUnread ? "rgba(74,154,74,0.05)" : "transparent",
+          backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border,
+          padding: 14, marginBottom: 6, flexDirection: "row", alignItems: "center", gap: 12,
         }}
       >
-        {/* Avatar */}
-        <View
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: 22,
-            backgroundColor: other?.is_agent ? Colors.blue : Colors.green,
-            alignItems: "center",
-            justifyContent: "center",
-            marginRight: 12,
-          }}
-        >
-          <Text style={{ color: Colors.white, fontSize: 16, fontWeight: "700" }}>
-            {getInitial(name)}
+        <View style={{
+          width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.green + "33",
+          alignItems: "center", justifyContent: "center",
+        }}>
+          <Text style={{ color: Colors.green, fontSize: 14, fontWeight: "700" }}>
+            {(other.display_name || other.username || "?").charAt(0).toUpperCase()}
           </Text>
         </View>
 
-        {/* Content */}
         <View style={{ flex: 1 }}>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 3,
-            }}
-          >
-            <Text
-              style={{
-                color: Colors.text,
-                fontSize: 15,
-                fontWeight: hasUnread ? "700" : "500",
-                flex: 1,
-              }}
-              numberOfLines={1}
-            >
-              {name}
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+            <Text style={{ color: Colors.text, fontSize: 14, fontWeight: "600" }}>
+              {other.display_name || other.username}
             </Text>
-            <Text
-              style={{
-                color: Colors.textMuted,
-                fontSize: 11,
-                fontFamily: "monospace",
-                marginLeft: 8,
-              }}
-            >
-              {item.last_message
-                ? timeAgo(item.last_message.created_at)
-                : ""}
+            <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: Fonts.mono }}>
+              {timeAgo(item.last_message_at)}
             </Text>
           </View>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text
-              style={{
-                color: hasUnread ? Colors.textSecondary : Colors.textMuted,
-                fontSize: 13,
-                flex: 1,
-              }}
-              numberOfLines={1}
-            >
-              {truncate(lastMsg, 50)}
-            </Text>
-            {hasUnread ? (
-              <View
-                style={{
-                  backgroundColor: Colors.green,
-                  borderRadius: 10,
-                  minWidth: 20,
-                  height: 20,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  paddingHorizontal: 6,
-                  marginLeft: 8,
-                }}
-              >
-                <Text
-                  style={{
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: "700",
-                    fontFamily: "monospace",
-                  }}
-                >
-                  {item.unread_count}
-                </Text>
-              </View>
-            ) : null}
-          </View>
+          <Text style={{ color: Colors.textSecondary, fontSize: 12 }} numberOfLines={1}>
+            {item.last_message_preview || "No messages yet"}
+          </Text>
         </View>
+
+        {item.unread > 0 ? (
+          <View style={{
+            backgroundColor: Colors.blue, minWidth: 20, height: 20, borderRadius: 10,
+            alignItems: "center", justifyContent: "center", paddingHorizontal: 6,
+          }}>
+            <Text style={{ color: Colors.text, fontSize: 10, fontFamily: Fonts.mono, fontWeight: "700" }}>
+              {item.unread}
+            </Text>
+          </View>
+        ) : null}
       </TouchableOpacity>
     );
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      {/* Header */}
-      <View
-        style={{
-          paddingTop: insets.top + 8,
-          paddingHorizontal: 16,
-          paddingBottom: 12,
-          borderBottomWidth: 1,
-          borderBottomColor: Colors.border,
-        }}
-      >
-        <Text style={{ color: Colors.text, fontSize: 22, fontWeight: "700" }}>
-          Messages
-        </Text>
+      <View style={{ paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12 }}>
+        <Text style={{ color: Colors.blue, fontSize: 9, fontFamily: Fonts.mono, letterSpacing: 3 }}>SCOUTA</Text>
+        <Text style={{ color: Colors.text, fontSize: 24, fontWeight: "600", marginTop: 4 }}>Messages</Text>
       </View>
 
-      {error ? (
-        <View style={{ margin: 16, padding: 12, backgroundColor: "rgba(238,68,68,0.1)", borderRadius: 8 }}>
-          <Text style={{ color: Colors.red, fontSize: 13 }}>{error}</Text>
-        </View>
-      ) : null}
-
       {loading ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator size="large" color={Colors.green} />
-        </View>
+        <ActivityIndicator color={Colors.green} style={{ marginTop: 40 }} />
       ) : (
         <FlatList
           data={conversations}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderConversation}
-          contentContainerStyle={{ paddingBottom: 20 }}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                setRefreshing(true);
-                loadConversations();
-              }}
-              tintColor={Colors.green}
-              colors={[Colors.green]}
-            />
-          }
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.green} />}
           ListEmptyComponent={
-            <View style={{ paddingTop: 80, alignItems: "center" }}>
-              <Text style={{ fontSize: 40, marginBottom: 12 }}>{"💬"}</Text>
-              <Text
-                style={{ color: Colors.textMuted, fontSize: 16, fontWeight: "600" }}
-              >
-                No messages yet
-              </Text>
-              <Text
-                style={{ color: Colors.textMuted, fontSize: 13, marginTop: 4 }}
-              >
-                Start a conversation!
-              </Text>
-            </View>
+            <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono, textAlign: "center", marginTop: 60 }}>
+              No conversations yet.
+            </Text>
           }
         />
       )}

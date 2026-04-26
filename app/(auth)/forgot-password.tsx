@@ -1,179 +1,73 @@
 import { useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-} from "react-native";
-import { useRouter } from "expo-router";
-import { Colors } from "@/lib/constants";
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from "react-native";
+import { Link } from "expo-router";
 import { forgotPassword } from "@/lib/api";
+import { Colors } from "@/lib/constants";
 
 export default function ForgotPasswordScreen() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
 
-  async function handleSend() {
-    setError("");
-    if (!email.trim()) {
-      setError("Please enter your email address.");
-      return;
-    }
+  async function handleSubmit() {
+    if (!email.trim()) return;
     setLoading(true);
+    setError("");
     try {
       await forgotPassword(email.trim());
       setSent(true);
     } catch (e: any) {
-      setError(e?.message || "Failed to send reset link.");
-    } finally {
-      setLoading(false);
+      setError(e.message || "Failed to send email");
     }
+    setLoading(false);
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: Colors.bg }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <View style={{ flex: 1, justifyContent: "center", padding: 24 }}>
-        <Text
-          style={{
-            color: Colors.text,
-            fontSize: 24,
-            fontWeight: "700",
-            textAlign: "center",
-            marginBottom: 8,
-          }}
-        >
-          Reset Password
-        </Text>
-        <Text
-          style={{
-            color: Colors.textMuted,
-            fontSize: 14,
-            textAlign: "center",
-            marginBottom: 32,
-          }}
-        >
-          Enter your email and we will send you a reset link.
-        </Text>
+    <View style={{ flex: 1, justifyContent: "center", padding: 24, backgroundColor: Colors.bg }}>
+      <Text style={{ color: Colors.text, fontSize: 22, fontWeight: "700", marginBottom: 8 }}>Reset Password</Text>
+      <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: "monospace", marginBottom: 32 }}>
+        We'll send you a link to reset your password.
+      </Text>
 
-        {sent ? (
-          <View
-            style={{
-              backgroundColor: "rgba(74,154,74,0.1)",
-              borderWidth: 1,
-              borderColor: Colors.green,
-              borderRadius: 8,
-              padding: 16,
-              marginBottom: 24,
-            }}
-          >
-            <Text
-              style={{
-                color: Colors.green,
-                fontSize: 14,
-                textAlign: "center",
-                fontWeight: "600",
-              }}
-            >
-              Reset link sent! Check your email inbox.
-            </Text>
-          </View>
-        ) : null}
-
-        {error ? (
-          <View
-            style={{
-              backgroundColor: "rgba(238,68,68,0.1)",
-              borderWidth: 1,
-              borderColor: Colors.red,
-              borderRadius: 8,
-              padding: 12,
-              marginBottom: 16,
-            }}
-          >
-            <Text style={{ color: Colors.red, fontSize: 13 }}>{error}</Text>
-          </View>
-        ) : null}
-
-        <Text
-          style={{
-            color: Colors.textSecondary,
-            fontSize: 11,
-            fontFamily: "monospace",
-            letterSpacing: 1,
-            marginBottom: 6,
-            textTransform: "uppercase",
-          }}
-        >
-          EMAIL
-        </Text>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          placeholder="you@example.com"
-          placeholderTextColor={Colors.textMuted}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={{
-            backgroundColor: Colors.inputBg,
-            borderWidth: 1,
-            borderColor: Colors.inputBorder,
-            borderRadius: 8,
-            padding: 14,
-            color: Colors.text,
-            fontSize: 15,
-            marginBottom: 24,
-          }}
-        />
-
-        <TouchableOpacity
-          onPress={handleSend}
-          disabled={loading || sent}
-          style={{
-            backgroundColor: sent ? Colors.textMuted : Colors.green,
-            borderRadius: 8,
-            paddingVertical: 16,
-            alignItems: "center",
-            opacity: loading ? 0.6 : 1,
-          }}
-        >
-          {loading ? (
-            <ActivityIndicator color={Colors.white} />
-          ) : (
-            <Text
-              style={{
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: "700",
-                letterSpacing: 2,
-              }}
-            >
-              SEND RESET LINK
-            </Text>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{ marginTop: 24, alignItems: "center" }}
-        >
-          <Text style={{ color: Colors.textSecondary, fontSize: 14 }}>
-            Back to{" "}
-            <Text style={{ color: Colors.green, fontWeight: "600" }}>
-              Sign in
-            </Text>
+      {sent ? (
+        <View>
+          <Text style={{ color: Colors.green, fontSize: 13, fontFamily: "monospace", marginBottom: 24 }}>
+            Check your email for a reset link.
           </Text>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+          <Link href="/(auth)/login">
+            <Text style={{ color: Colors.blue, fontSize: 12, fontFamily: "monospace" }}>Back to login</Text>
+          </Link>
+        </View>
+      ) : (
+        <>
+          {error ? <Text style={{ color: Colors.red, fontSize: 12, fontFamily: "monospace", marginBottom: 12 }}>{error}</Text> : null}
+          <TextInput
+            value={email}
+            onChangeText={setEmail}
+            placeholder="you@email.com"
+            placeholderTextColor={Colors.textMuted}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            style={{
+              backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder,
+              color: Colors.text, padding: 14, fontSize: 15, fontFamily: "monospace", marginBottom: 16,
+            }}
+          />
+          <TouchableOpacity
+            onPress={handleSubmit}
+            disabled={loading || !email.trim()}
+            style={{ backgroundColor: Colors.green, padding: 16, alignItems: "center", opacity: loading ? 0.5 : 1 }}
+          >
+            {loading ? <ActivityIndicator color="#fff" /> : (
+              <Text style={{ color: "#fff", fontSize: 13, fontFamily: "monospace", letterSpacing: 1 }}>SEND RESET LINK</Text>
+            )}
+          </TouchableOpacity>
+          <Link href="/(auth)/login" style={{ marginTop: 16 }}>
+            <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: "monospace" }}>Back to login</Text>
+          </Link>
+        </>
+      )}
+    </View>
   );
 }

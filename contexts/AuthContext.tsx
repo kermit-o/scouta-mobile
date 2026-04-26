@@ -1,86 +1,114 @@
-import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  useCallback,
-  ReactNode,
-} from "react";
-import * as SecureStore from "expo-secure-store";
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { saveToken, getToken, saveUser, getUser, clearAuth } from "@/lib/auth";
+import * as api from "@/lib/api";
 import type { User } from "@/lib/types";
 
-interface AuthContextType {
+interface AuthState {
   user: User | null;
   token: string | null;
   loading: boolean;
-  setSession: (token: string, user: User | null) => Promise<void>;
+  isAuthenticated: boolean;
+  login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  register: (email: string, password: string, username: string, displayName?: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType>({
+const AuthContext = createContext<AuthState>({
   user: null,
   token: null,
   loading: true,
-  setSession: async () => {},
+  isAuthenticated: false,
+  login: async () => ({ ok: false }),
+  register: async () => ({ ok: false }),
   logout: async () => {},
+  refreshUser: async () => {},
 });
 
-const TOKEN_KEY = "scouta_token";
-const USER_KEY = "scouta_user";
-
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let cancelled = false;
-    async function restore() {
-      try {
-        const savedToken = await SecureStore.getItemAsync(TOKEN_KEY);
-        const savedUser = await SecureStore.getItemAsync(USER_KEY);
-        if (!cancelled && savedToken) {
-          setToken(savedToken);
-          if (savedUser) {
-            try {
-              setUser(JSON.parse(savedUser));
-            } catch {}
+    (async () => {
+      const storedToken = await getToken();
+      if (storedToken) {
+        setToken(storedToken);
+        try {
+          const me = await api.getMe();
+          if (me?.id) {
+            setUser(me);
+            await saveUser(me);
+          } else {
+            await clearAuth();
           }
+        } catch {
+          await clearAuth();
         }
-      } catch {}
-      if (!cancelled) setLoading(false);
-    }
-    restore();
-    return () => {
-      cancelled = true;
-    };
+      }
+      setLoading(false);
+    })();
   }, []);
 
-  const setSession = useCallback(
-    async (newToken: string, newUser: User | null) => {
-      setToken(newToken);
-      setUser(newUser);
-      try {
-        await SecureStore.setItemAsync(TOKEN_KEY, newToken);
-        if (newUser) {
-          await SecureStore.setItemAsync(USER_KEY, JSON.stringify(newUser));
-        }
-      } catch {}
-    },
-    []
-  );
-
-  const logout = useCallback(async () => {
-    setToken(null);
-    setUser(null);
+  async function login(email: string, password: string) {
     try {
-      await SecureStore.deleteItemAsync(TOKEN_KEY);
-      await SecureStore.deleteItemAsync(USER_KEY);
+      const data = await api.login(email, password);
+      if (data.access_token) {
+        await saveToken(data.access_token);
+        setToken(data.access_token);
+        const me = await api.getMe();
+        if (me?.id) {
+          setUser(me);
+          await saveUser(me);
+        }
+        return { ok: true };
+      }
+      return { ok: false, error: data.detail || "Login failed" };
+    } catch (e: any) {
+      return { ok: false, error: e.message || "Network error" };
+    }
+  }
+
+  async function register(email: string, password: string, username: string, displayName?: string) {
+    try {
+      const data = await api.register(email, password, username, displayName);
+      if (data.access_token) {
+        await saveToken(data.access_token);
+        setToken(data.access_token);
+        const me = await api.getMe();
+        if (me?.id) {
+          setUser(me);
+          await saveUser(me);
+        }
+        return { ok: true };
+      }
+      return { ok: false, error: data.detail || "Registration failed" };
+    } catch (e: any) {
+      return { ok: false, error: e.message || "Network error" };
+    }
+  }
+
+  async function logout() {
+    await clearAuth();
+    setUser(null);
+    setToken(null);
+  }
+
+  async function refreshUser() {
+    try {
+      const me = await api.getMe();
+      if (me?.id) {
+        setUser(me);
+        await saveUser(me);
+      }
     } catch {}
-  }, []);
+  }
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, setSession, logout }}>
+    <AuthContext.Provider
+      value={{ user, token, loading, isAuthenticated: !!user, login, register, logout, refreshUser }}
+    >
       {children}
     </AuthContext.Provider>
   );

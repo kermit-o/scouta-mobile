@@ -1,380 +1,257 @@
-import { API_BASE, ORG_ID, CAPTCHA_TOKEN } from "./constants";
+import { API_BASE, ORG_ID } from "./constants";
+import { getToken } from "./auth";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function authHeaders(token?: string | null): Record<string, string> {
-  const h: Record<string, string> = {
+async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  const token = await getToken();
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    Accept: "application/json",
+    ...(options.headers as Record<string, string>),
   };
-  if (token) h["Authorization"] = `Bearer ${token}`;
-  return h;
-}
-
-async function handleResponse(res: Response) {
-  if (res.status === 204) return null;
-
-  const data = await res.json().catch(() => null);
-
-  if (!res.ok) {
-    const msg =
-      data?.detail ?? data?.message ?? data?.error ?? `Request failed (${res.status})`;
-    throw new Error(msg);
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
   }
-
-  return data;
+  return fetch(`${API_BASE}${path}`, { ...options, headers });
 }
 
-async function get(path: string, token?: string | null) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "GET",
-    headers: authHeaders(token),
-  });
-  return handleResponse(res);
-}
-
-async function post(path: string, body: any, token?: string | null) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify(body),
-  });
-  return handleResponse(res);
-}
-
-async function put(path: string, body: any, token?: string | null) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "PUT",
-    headers: authHeaders(token),
-    body: JSON.stringify(body),
-  });
-  return handleResponse(res);
-}
-
-async function patch(path: string, body: any, token?: string | null) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "PATCH",
-    headers: authHeaders(token),
-    body: JSON.stringify(body),
-  });
-  return handleResponse(res);
-}
-
-async function del(path: string, token?: string | null) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "DELETE",
-    headers: authHeaders(token),
-  });
-  return handleResponse(res);
-}
-
-// ---------------------------------------------------------------------------
-// Auth
-// ---------------------------------------------------------------------------
-
+// ── Auth ──────────────────────────────────────────────────────────────────────
 export async function login(email: string, password: string) {
-  return post("/auth/login", {
-    email,
-    password,
-    cf_turnstile_token: CAPTCHA_TOKEN,
-    org_id: ORG_ID,
+  const res = await apiFetch("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password, cf_turnstile_token: "xPMEvUwAp_EFk7EGkEMJUBm-osAyoLFBPCl9xkzqKkU" }),
   });
+  return res.json();
 }
 
-export async function register(
-  email: string,
-  username: string,
-  display_name: string,
-  password: string
-) {
-  return post("/auth/register", {
-    email,
-    username,
-    display_name,
-    password,
-    cf_turnstile_token: CAPTCHA_TOKEN,
-    org_id: ORG_ID,
+export async function register(email: string, password: string, username: string, display_name?: string) {
+  const res = await apiFetch("/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ email, password, username, display_name: display_name || username, cf_turnstile_token: "xPMEvUwAp_EFk7EGkEMJUBm-osAyoLFBPCl9xkzqKkU" }),
   });
+  return res.json();
 }
 
 export async function forgotPassword(email: string) {
-  return post("/auth/forgot-password", { email });
+  const res = await apiFetch("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+  return res.json();
 }
 
-// ---------------------------------------------------------------------------
-// Feed / Posts
-// ---------------------------------------------------------------------------
-
-export async function getFeed(
-  sort: string,
-  limit: number,
-  offset: number,
-  token?: string | null
-) {
-  return get(
-    `/posts?org_id=${ORG_ID}&sort=${sort}&limit=${limit}&offset=${offset}&status=published`,
-    token
-  );
+export async function getMe() {
+  const res = await apiFetch("/auth/me");
+  return res.json();
 }
 
-export async function getPost(id: number, token?: string | null) {
-  return get(`/posts/${id}?org_id=${ORG_ID}`, token);
+// ── Posts ──────────────────────────────────────────────────────────────────────
+export async function getFeed(sort = "recent", limit = 20, offset = 0, tag?: string) {
+  let url = `/orgs/${ORG_ID}/posts?status=published&sort=${sort}&limit=${limit}&offset=${offset}`;
+  if (tag) url += `&tag=${encodeURIComponent(tag)}`;
+  const res = await apiFetch(url);
+  return res.json();
 }
 
-export async function createPost(
-  data: {
-    title: string;
-    content: string;
-    post_type: string;
-    media_url?: string | null;
-  },
-  token: string | null
-) {
-  return post("/posts", { ...data, org_id: ORG_ID, status: "published" }, token);
+export async function getPost(postId: number) {
+  const res = await apiFetch(`/orgs/${ORG_ID}/posts/${postId}`);
+  return res.json();
 }
 
-export async function votePost(
-  postId: number,
-  direction: number,
-  token?: string | null
-) {
-  return post(`/posts/${postId}/vote`, { direction }, token);
+export async function votePost(postId: number, value: 1 | -1) {
+  const res = await apiFetch(`/orgs/${ORG_ID}/posts/${postId}/vote`, {
+    method: "POST",
+    body: JSON.stringify({ value }),
+  });
+  return res.json();
 }
 
-export async function getSavedPosts(token: string | null) {
-  return get(`/posts/saved?org_id=${ORG_ID}`, token);
+export async function createPost(title: string, body_md: string, tags?: string[]) {
+  const res = await apiFetch(`/orgs/${ORG_ID}/posts`, {
+    method: "POST",
+    body: JSON.stringify({ title, body_md, status: "published", tags: tags || [] }),
+  });
+  return res.json();
 }
 
-// ---------------------------------------------------------------------------
-// Comments
-// ---------------------------------------------------------------------------
-
-export async function getComments(postId: number, token?: string | null) {
-  return get(`/posts/${postId}/comments?org_id=${ORG_ID}`, token);
+export async function savePost(postId: number) {
+  const res = await apiFetch(`/orgs/${ORG_ID}/posts/${postId}/save`, { method: "POST" });
+  return res.json();
 }
 
-export async function createComment(
-  postId: number,
-  content: string,
-  parentId: number | null,
-  token: string | null
-) {
-  return post(
-    `/posts/${postId}/comments`,
-    { content, parent_id: parentId },
-    token
-  );
+export async function unsavePost(postId: number) {
+  const res = await apiFetch(`/orgs/${ORG_ID}/posts/${postId}/save`, { method: "DELETE" });
+  return res.json();
 }
 
-export async function voteComment(
-  commentId: number,
-  direction: number,
-  token?: string | null
-) {
-  return post(`/comments/${commentId}/vote`, { direction }, token);
+export async function getSavedPosts(limit = 20, offset = 0) {
+  const res = await apiFetch(`/orgs/${ORG_ID}/posts/saved?limit=${limit}&offset=${offset}`);
+  return res.json();
 }
 
-// ---------------------------------------------------------------------------
-// Videos
-// ---------------------------------------------------------------------------
-
-export async function getVideoFeed(token?: string | null) {
-  return get(`/posts?org_id=${ORG_ID}&post_type=video&sort=recent&limit=30`, token);
+// ── Comments ──────────────────────────────────────────────────────────────────
+export async function getComments(postId: number, limit = 50, offset = 0) {
+  const res = await apiFetch(`/orgs/${ORG_ID}/posts/${postId}/comments?limit=${limit}&offset=${offset}`);
+  return res.json();
 }
 
-// ---------------------------------------------------------------------------
-// Live Streams
-// ---------------------------------------------------------------------------
-
-export async function getLiveStreams(token?: string | null) {
-  return get(`/live/streams?org_id=${ORG_ID}`, token);
+export async function createComment(postId: number, body: string, parentCommentId?: number) {
+  const res = await apiFetch(`/orgs/${ORG_ID}/posts/${postId}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body, parent_comment_id: parentCommentId || null }),
+  });
+  return res.json();
 }
 
-export async function getLiveStream(roomName: string, token?: string | null) {
-  return get(`/live/streams/${roomName}`, token);
+export async function voteComment(postId: number, commentId: number, value: 1 | -1) {
+  const res = await apiFetch(`/orgs/${ORG_ID}/posts/${postId}/comments/${commentId}/vote`, {
+    method: "POST",
+    body: JSON.stringify({ value }),
+  });
+  return res.json();
 }
 
-export async function startLiveStream(data: any, token: string | null) {
-  return post("/live/streams", { ...data, org_id: ORG_ID }, token);
+// ── Agents ────────────────────────────────────────────────────────────────────
+export async function getLeaderboard(limit = 50) {
+  const res = await apiFetch(`/agents/leaderboard?limit=${limit}`);
+  return res.json();
 }
 
-export async function endLiveStream(roomName: string, token?: string | null) {
-  return post(`/live/streams/${roomName}/end`, {}, token);
+export async function getAgent(agentId: number) {
+  const res = await apiFetch(`/agents/${agentId}`);
+  return res.json();
 }
 
-export async function getLiveChat(roomName: string, token?: string | null) {
-  return get(`/live/streams/${roomName}/chat`, token);
+export async function followAgent(agentId: number) {
+  const res = await apiFetch(`/agents/${agentId}/follow`, { method: "POST" });
+  return res.json();
 }
 
-// ---------------------------------------------------------------------------
-// Gifts
-// ---------------------------------------------------------------------------
-
-export async function getGifts(token?: string | null) {
-  return get(`/live/gifts?org_id=${ORG_ID}`, token);
+export async function unfollowAgent(agentId: number) {
+  const res = await apiFetch(`/agents/${agentId}/follow`, { method: "DELETE" });
+  return res.json();
 }
 
-export async function sendGift(
-  streamId: number,
-  giftId: number,
-  quantity: number,
-  token: string | null
-) {
-  return post(
-    `/live/streams/${streamId}/gifts`,
-    { gift_id: giftId, quantity },
-    token
-  );
+// ── Profile ───────────────────────────────────────────────────────────────────
+export async function getMyProfile() {
+  const res = await apiFetch("/profile/me");
+  return res.json();
 }
 
-// ---------------------------------------------------------------------------
-// Search
-// ---------------------------------------------------------------------------
-
-export async function searchAll(query: string, token?: string | null) {
-  return get(
-    `/search?q=${encodeURIComponent(query)}&org_id=${ORG_ID}`,
-    token
-  );
+export async function getUserProfile(username: string) {
+  const res = await apiFetch(`/u/${username}`);
+  return res.json();
 }
 
-// ---------------------------------------------------------------------------
-// Messages
-// ---------------------------------------------------------------------------
-
-export async function getConversations(token: string | null) {
-  return get("/messages/conversations", token);
+export async function updateProfile(data: Record<string, string>) {
+  const res = await apiFetch("/auth/profile", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+  return res.json();
 }
 
-export async function getConversation(id: number, token?: string | null) {
-  return get(`/messages/conversations/${id}`, token);
+// ── Search ────────────────────────────────────────────────────────────────────
+export async function globalSearch(q: string) {
+  const res = await apiFetch(`/search?q=${encodeURIComponent(q)}`);
+  return res.json();
 }
 
-export async function getMessages(conversationId: number, token?: string | null) {
-  return get(`/messages/conversations/${conversationId}/messages`, token);
+// ── Notifications ─────────────────────────────────────────────────────────────
+export async function getNotifications(limit = 20, offset = 0) {
+  const res = await apiFetch(`/notifications?limit=${limit}&offset=${offset}`);
+  return res.json();
 }
 
-export async function sendMessage(
-  conversationId: number,
-  content: string,
-  token: string | null
-) {
-  return post(
-    `/messages/conversations/${conversationId}/messages`,
-    { content, message_type: "text" },
-    token
-  );
+export async function markAllRead() {
+  const res = await apiFetch("/notifications/read-all", { method: "POST" });
+  return res.json();
 }
 
-export async function startConversation(userId: number, token: string | null) {
-  return post(
-    "/messages/conversations",
-    { participant_ids: [userId] },
-    token
-  );
+// ── Messages ──────────────────────────────────────────────────────────────────
+export async function getConversations() {
+  const res = await apiFetch("/messages/conversations");
+  return res.json();
 }
 
-// ---------------------------------------------------------------------------
-// Notifications
-// ---------------------------------------------------------------------------
-
-export async function getNotifications(token?: string | null) {
-  return get("/notifications", token);
+export async function getMessages(convId: number, limit = 50) {
+  const res = await apiFetch(`/messages/conversations/${convId}/messages?limit=${limit}`);
+  return res.json();
 }
 
-export async function markAllNotificationsRead(token?: string | null) {
-  return post("/notifications/read-all", {}, token);
+export async function startConversation(username: string) {
+  const res = await apiFetch(`/messages/start/${username}`, { method: "POST" });
+  return res.json();
 }
 
-// ---------------------------------------------------------------------------
-// Agents
-// ---------------------------------------------------------------------------
-
-export async function getAgents(token?: string | null) {
-  return get(`/agents?org_id=${ORG_ID}`, token);
+export async function sendMessage(convId: number, body: string) {
+  const res = await apiFetch(`/messages/conversations/${convId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
+  return res.json();
 }
 
-export async function getAgent(id: number, token?: string | null) {
-  return get(`/agents/${id}`, token);
+export async function getUnreadCount() {
+  const res = await apiFetch("/messages/unread-count");
+  return res.json();
 }
 
-export async function followAgent(agentId: number, token: string | null) {
-  return post(`/agents/${agentId}/follow`, {}, token);
+// ── Live ──────────────────────────────────────────────────────────────────────
+export async function getActiveStreams() {
+  const res = await apiFetch("/live/active");
+  return res.json();
 }
 
-export async function unfollowAgent(agentId: number, token: string | null) {
-  return del(`/agents/${agentId}/follow`, token);
+export async function joinStream(roomName: string, password?: string) {
+  const res = await apiFetch(`/live/${roomName}/join`, {
+    method: "POST",
+    body: JSON.stringify(password ? { password } : {}),
+  });
+  return { status: res.status, data: await res.json() };
 }
 
-// ---------------------------------------------------------------------------
-// User Profiles
-// ---------------------------------------------------------------------------
-
-export async function getUserProfile(username: string, token?: string | null) {
-  return get(`/users/${username}?org_id=${ORG_ID}`, token);
+export async function getGiftCatalog() {
+  const res = await apiFetch("/live/gifts/catalog");
+  return res.json();
 }
 
-export async function updateProfile(
-  data: Record<string, any>,
-  token: string | null
-) {
-  return patch("/profile/me", data, token);
+export async function sendGift(roomName: string, giftId: number) {
+  const res = await apiFetch(`/live/${roomName}/gift`, {
+    method: "POST",
+    body: JSON.stringify({ gift_id: giftId }),
+  });
+  return res.json();
 }
 
-export async function followUser(userId: number, token: string | null) {
-  return post(`/users/${userId}/follow`, {}, token);
+export async function getTopGifters(roomName: string) {
+  const res = await apiFetch(`/live/${roomName}/top-gifters`);
+  return res.json();
 }
 
-export async function unfollowUser(userId: number, token: string | null) {
-  return del(`/users/${userId}/follow`, token);
+// ── Coins ─────────────────────────────────────────────────────────────────────
+export async function getCoinBalance() {
+  const res = await apiFetch("/coins/balance");
+  return res.json();
 }
 
-// ---------------------------------------------------------------------------
-// Coins
-// ---------------------------------------------------------------------------
-
-export async function getCoinBalance(token: string | null) {
-  return get("/coins/balance", token);
+export async function getCoinPackages() {
+  const res = await apiFetch("/coins/packages");
+  return res.json();
 }
 
-export async function getCoinPackages(token?: string | null) {
-  return get(`/coins/packages?org_id=${ORG_ID}`, token);
+export async function purchaseCoins(packageId: string) {
+  const res = await apiFetch("/coins/purchase", {
+    method: "POST",
+    body: JSON.stringify({ package_id: packageId }),
+  });
+  return res.json();
 }
 
-export async function getCoinTransactions(token: string | null) {
-  return get("/coins/transactions", token);
+export async function getCoinTransactions(limit = 20, offset = 0) {
+  const res = await apiFetch(`/coins/transactions?limit=${limit}&offset=${offset}`);
+  return res.json();
 }
 
-export async function purchaseCoins(packageId: number, token?: string | null) {
-  return post("/coins/purchase", { package_id: packageId }, token);
-}
-
-// ---------------------------------------------------------------------------
-// Debates
-// ---------------------------------------------------------------------------
-
-export async function getDebates(token?: string | null) {
-  return get(`/debates?org_id=${ORG_ID}`, token);
-}
-
-export async function getBestDebates(sort: string, token?: string | null) {
-  return get(`/debates/best?org_id=${ORG_ID}&sort=${sort}`, token);
-}
-
-// ---------------------------------------------------------------------------
-// Upload
-// ---------------------------------------------------------------------------
-
-export async function presignUpload(
-  filename: string,
-  contentType: string,
-  token: string | null
-) {
-  return post(
-    "/upload/presign",
-    { filename, content_type: contentType },
-    token
-  );
+export async function getEarnings() {
+  const res = await apiFetch("/coins/earnings");
+  return res.json();
 }

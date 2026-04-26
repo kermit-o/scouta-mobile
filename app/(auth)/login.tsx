@@ -1,76 +1,34 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Linking } from "react-native";
 import { useRouter, Link } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
 import { useAuth } from "@/contexts/AuthContext";
-import { Colors, API_BASE } from "@/lib/constants";
-import { login as apiLogin } from "@/lib/api";
+import { Colors } from "@/lib/constants";
+
+const API = "https://api.scouta.co/api/v1";
 
 export default function LoginScreen() {
+  const { login } = useAuth();
   const router = useRouter();
-  const { setSession } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function handleLogin() {
-    if (!email.trim() || !password.trim()) {
-      setError("Enter email and password");
-      return;
-    }
+    if (!email.trim() || !password.trim()) return;
     setLoading(true);
     setError("");
-    try {
-      const data = await apiLogin(email.trim(), password);
-      if (data.access_token) {
-        await setSession(data.access_token, {
-          id: data.user_id,
-          email: email.trim(),
-          username: data.username || "",
-          display_name: data.display_name || "",
-          avatar_url: data.avatar_url || "",
-          bio: null,
-          is_verified: true,
-          is_superuser: false,
-        });
-        router.replace("/(app)");
-      } else {
-        setError(data.detail || "Login failed");
-      }
-    } catch (e: any) {
-      setError(e.message || "Login failed");
-    }
+    const result = await login(email.trim(), password);
     setLoading(false);
+    if (result.ok) {
+      router.replace("/(app)");
+    } else {
+      setError(result.error || "Login failed");
+    }
   }
 
-  async function handleGoogleLogin() {
-    try {
-      const redirectUrl = "scouta://auth/callback";
-      const authUrl = `${API_BASE}/auth/google?redirect_mobile=1`;
-      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl);
-      if (result.type === "success" && result.url) {
-        const url = new URL(result.url);
-        const token = url.searchParams.get("token");
-        if (token) {
-          await setSession(token, {
-            id: Number(url.searchParams.get("user_id")),
-            email: "",
-            username: url.searchParams.get("username") || "",
-            display_name: url.searchParams.get("display_name") || "",
-            avatar_url: url.searchParams.get("avatar_url") || "",
-            bio: null,
-            is_verified: true,
-            is_superuser: false,
-          });
-          router.replace("/(app)");
-        } else {
-          setError("Google login failed");
-        }
-      }
-    } catch {
-      setError("Google login failed");
-    }
+  function handleGoogleLogin() {
+    Linking.openURL(`${API}/auth/google?redirect_mobile=1`);
   }
 
   return (
@@ -81,10 +39,12 @@ export default function LoginScreen() {
           <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: "monospace", letterSpacing: 3, marginTop: 8 }}>AI DEBATES</Text>
         </View>
 
-        {error ? <Text style={{ color: Colors.red, fontSize: 12, fontFamily: "monospace", textAlign: "center", marginBottom: 16 }}>{error}</Text> : null}
+        {error ? (
+          <Text style={{ color: Colors.red, fontSize: 12, fontFamily: "monospace", textAlign: "center", marginBottom: 16 }}>{error}</Text>
+        ) : null}
 
         <TouchableOpacity onPress={handleGoogleLogin}
-          style={{ backgroundColor: "#fff", padding: 14, alignItems: "center", borderRadius: 8, flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 20 }}>
+          style={{ backgroundColor: "#fff", padding: 14, alignItems: "center", borderRadius: 4, flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 20 }}>
           <Text style={{ fontSize: 18, fontWeight: "700", color: "#4285F4" }}>G</Text>
           <Text style={{ color: "#333", fontSize: 14, fontWeight: "600" }}>Continue with Google</Text>
         </TouchableOpacity>
@@ -110,9 +70,11 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </Link>
 
-        <TouchableOpacity onPress={handleLogin} disabled={loading}
-          style={{ backgroundColor: Colors.green, padding: 16, alignItems: "center", borderRadius: 8, opacity: loading ? 0.5 : 1 }}>
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={{ color: "#fff", fontSize: 13, fontFamily: "monospace", letterSpacing: 1 }}>SIGN IN</Text>}
+        <TouchableOpacity onPress={handleLogin} disabled={loading || !email.trim() || !password.trim()}
+          style={{ backgroundColor: Colors.green, padding: 16, alignItems: "center", opacity: loading || !email.trim() || !password.trim() ? 0.5 : 1 }}>
+          {loading ? <ActivityIndicator color="#fff" /> : (
+            <Text style={{ color: "#fff", fontSize: 13, fontFamily: "monospace", letterSpacing: 1 }}>SIGN IN</Text>
+          )}
         </TouchableOpacity>
 
         <View style={{ flexDirection: "row", justifyContent: "center", marginTop: 24, gap: 4 }}>
