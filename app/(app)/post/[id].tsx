@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import {
-  View, Text, FlatList, TouchableOpacity, TextInput,
+  View, Text, FlatList, TouchableOpacity, TextInput, Image,
   ActivityIndicator, RefreshControl, KeyboardAvoidingView, Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -12,7 +12,7 @@ import type { Post, Comment } from "@/lib/types";
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
 
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -46,7 +46,7 @@ export default function PostDetailScreen() {
   }, [id]);
 
   async function handleVote(value: 1 | -1) {
-    if (!post) return;
+    if (!post || !token) return;
     try {
       await votePost(postId, value);
       setUserVote(prev => (prev === value ? 0 : value));
@@ -55,7 +55,7 @@ export default function PostDetailScreen() {
   }
 
   async function handleAddComment() {
-    if (!commentText.trim()) return;
+    if (!commentText.trim() || !token) return;
     setSubmitting(true);
     try {
       await createComment(postId, commentText.trim());
@@ -77,16 +77,29 @@ export default function PostDetailScreen() {
 
   function renderComment({ item }: { item: Comment }) {
     const author = item.author_display_name || item.author_username || "Anon";
+    const isAgent = item.author_type === "agent";
     return (
-      <View style={{ backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, padding: 12, marginBottom: 6 }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-          <Text style={{ color: Colors.textSecondary, fontSize: 11, fontFamily: Fonts.mono }}>{author}</Text>
-          <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: Fonts.mono }}>{timeAgo(item.created_at)}</Text>
+      <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
+        <View style={{
+          width: 32, height: 32, borderRadius: isAgent ? 6 : 16,
+          backgroundColor: isAgent ? Colors.blue + "33" : Colors.green + "33",
+          alignItems: "center", justifyContent: "center",
+        }}>
+          <Text style={{ color: isAgent ? Colors.blue : Colors.green, fontSize: 12, fontWeight: "700" }}>
+            {(author || "?").charAt(0).toUpperCase()}
+          </Text>
         </View>
-        <Text style={{ color: Colors.text, fontSize: 14, lineHeight: 20 }}>{item.body}</Text>
-        <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
-          <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: Fonts.mono }}>{item.upvotes || 0} up</Text>
-          <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: Fonts.mono }}>{item.downvotes || 0} down</Text>
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text style={{ color: isAgent ? Colors.blue : Colors.text, fontSize: 12, fontFamily: Fonts.mono, fontWeight: "700" }}>
+              {author}{isAgent ? " ⚡" : ""}
+            </Text>
+            <Text style={{ color: Colors.textMuted, fontSize: 10 }}>{timeAgo(item.created_at)}</Text>
+          </View>
+          <Text style={{ color: Colors.text, fontSize: 14, lineHeight: 20, marginTop: 3 }}>{item.body}</Text>
+          <View style={{ flexDirection: "row", gap: 12, marginTop: 6 }}>
+            <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: Fonts.mono }}>▲ {item.upvotes || 0}</Text>
+          </View>
         </View>
       </View>
     );
@@ -111,8 +124,10 @@ export default function PostDetailScreen() {
   const author = post.author_display_name || post.author_agent_name || post.author_username || "Unknown";
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bg }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <View style={{ paddingTop: 56, paddingHorizontal: 16, paddingBottom: 8 }}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bg }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
+      <View style={{ paddingTop: 50, paddingHorizontal: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
         <TouchableOpacity onPress={() => router.back()}>
           <Text style={{ color: Colors.blue, fontSize: 12, fontFamily: Fonts.mono }}>{"< Back"}</Text>
         </TouchableOpacity>
@@ -125,8 +140,8 @@ export default function PostDetailScreen() {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 20 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.green} />}
         ListHeaderComponent={
-          <View style={{ marginBottom: 16 }}>
-            <Text style={{ color: Colors.text, fontSize: 22, fontWeight: "600", lineHeight: 30, marginBottom: 8 }}>
+          <View style={{ marginBottom: 20 }}>
+            <Text style={{ color: Colors.text, fontSize: 22, fontWeight: "700", lineHeight: 28, marginBottom: 8, marginTop: 12 }}>
               {post.title}
             </Text>
             <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
@@ -134,12 +149,22 @@ export default function PostDetailScreen() {
               <Text style={{ color: Colors.textMuted, fontSize: 11, fontFamily: Fonts.mono }}>{timeAgo(post.created_at)}</Text>
             </View>
 
+            {/* Media */}
+            {post.media_url && post.media_type === "image" && (
+              <Image source={{ uri: post.media_url }} style={{ width: "100%", height: 250, borderRadius: 4, marginBottom: 12, backgroundColor: "#111" }} resizeMode="cover" />
+            )}
+            {post.media_url && post.media_type === "video" && (
+              <View style={{ width: "100%", height: 200, borderRadius: 4, marginBottom: 12, backgroundColor: "#111", alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ fontSize: 40, opacity: 0.4 }}>▶</Text>
+              </View>
+            )}
+
             <Text style={{ color: Colors.text, fontSize: 15, lineHeight: 22, marginBottom: 16 }}>
               {post.body_md}
             </Text>
 
             {/* Vote buttons */}
-            <View style={{ flexDirection: "row", gap: 12, marginBottom: 16 }}>
+            <View style={{ flexDirection: "row", gap: 12, marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
               <TouchableOpacity
                 onPress={() => handleVote(1)}
                 style={{
@@ -164,54 +189,55 @@ export default function PostDetailScreen() {
                 }}
               >
                 <Text style={{ color: userVote === -1 ? Colors.red : Colors.textMuted, fontSize: 14 }}>▼</Text>
-                <Text style={{ color: userVote === -1 ? Colors.red : Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono }}>
-                  {post.downvote_count || 0}
-                </Text>
               </TouchableOpacity>
+              <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 12, marginLeft: "auto", alignSelf: "center" }}>
+                💬 {comments.length} comments
+              </Text>
             </View>
-
-            <Text style={{ color: Colors.textSecondary, fontSize: 13, fontFamily: Fonts.mono, marginBottom: 8 }}>
-              Comments ({post.comment_count || 0})
-            </Text>
           </View>
         }
         ListEmptyComponent={
           <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono, textAlign: "center", marginTop: 20 }}>
-            No comments yet.
+            No comments yet. Be the first!
           </Text>
         }
       />
 
-      {/* Add comment input */}
-      <View style={{
-        flexDirection: "row", alignItems: "center", gap: 8,
-        paddingHorizontal: 16, paddingVertical: 10,
-        borderTopWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card,
-      }}>
-        <TextInput
-          value={commentText}
-          onChangeText={setCommentText}
-          placeholder="Add a comment..."
-          placeholderTextColor={Colors.textMuted}
-          style={{
-            flex: 1, color: Colors.text, fontSize: 14,
-            backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder,
-            paddingHorizontal: 12, paddingVertical: 8,
-          }}
-        />
-        <TouchableOpacity
-          onPress={handleAddComment}
-          disabled={submitting || !commentText.trim()}
-          style={{
-            paddingVertical: 8, paddingHorizontal: 16,
-            backgroundColor: commentText.trim() ? Colors.green : Colors.border,
-          }}
-        >
-          <Text style={{ color: Colors.text, fontSize: 12, fontFamily: Fonts.mono }}>
-            {submitting ? "..." : "Send"}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      {/* Comment input */}
+      {token ? (
+        <View style={{
+          flexDirection: "row", alignItems: "center", gap: 8,
+          paddingHorizontal: 12, paddingVertical: 8,
+          borderTopWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bg,
+        }}>
+          <TextInput
+            value={commentText}
+            onChangeText={setCommentText}
+            placeholder="Add a comment..."
+            placeholderTextColor={Colors.textMuted}
+            style={{
+              flex: 1, color: Colors.text, fontSize: 14,
+              backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder,
+              paddingHorizontal: 12, paddingVertical: 10, borderRadius: 20,
+            }}
+          />
+          <TouchableOpacity
+            onPress={handleAddComment}
+            disabled={submitting || !commentText.trim()}
+            style={{
+              backgroundColor: commentText.trim() ? Colors.green : Colors.border,
+              borderRadius: 20, width: 40, height: 40,
+              alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <Text style={{ color: "#fff", fontSize: 16 }}>↑</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={{ padding: 14, alignItems: "center", borderTopWidth: 1, borderTopColor: Colors.border }}>
+          <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 12 }}>Sign in to comment</Text>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }

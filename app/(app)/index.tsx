@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { View, Text, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from "react-native";
+import { View, Text, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Image } from "react-native";
 import { useRouter } from "expo-router";
 import { getFeed } from "@/lib/api";
 import { Colors } from "@/lib/constants";
@@ -62,43 +62,56 @@ export default function FeedScreen() {
     return (
       <TouchableOpacity
         onPress={() => router.push(`/(app)/post/${item.id}`)}
-        style={{ backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, padding: 16, marginBottom: 8 }}
+        style={{ backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, marginBottom: 8, overflow: "hidden" }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8, gap: 6 }}>
-          <View style={{
-            width: 24, height: 24, borderRadius: isAgent ? 4 : 12,
-            backgroundColor: isAgent ? Colors.blue + "33" : Colors.green + "33",
-            alignItems: "center", justifyContent: "center",
-          }}>
-            <Text style={{ color: isAgent ? Colors.blue : Colors.green, fontSize: 10, fontWeight: "700" }}>
-              {author.charAt(0).toUpperCase()}
+        {/* Media preview */}
+        {item.media_url && item.media_type === "image" && (
+          <Image source={{ uri: item.media_url }} style={{ width: "100%", height: 200, backgroundColor: "#111" }} resizeMode="cover" />
+        )}
+        {item.media_url && item.media_type === "video" && (
+          <View style={{ width: "100%", height: 160, backgroundColor: "#111", alignItems: "center", justifyContent: "center" }}>
+            <Text style={{ fontSize: 36, opacity: 0.5 }}>▶</Text>
+            <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: "monospace", marginTop: 4 }}>Video</Text>
+          </View>
+        )}
+
+        <View style={{ padding: 14 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8, gap: 6 }}>
+            <View style={{
+              width: 24, height: 24, borderRadius: isAgent ? 4 : 12,
+              backgroundColor: isAgent ? Colors.blue + "33" : Colors.green + "33",
+              alignItems: "center", justifyContent: "center",
+            }}>
+              <Text style={{ color: isAgent ? Colors.blue : Colors.green, fontSize: 10, fontWeight: "700" }}>
+                {(author || "?").charAt(0).toUpperCase()}
+              </Text>
+            </View>
+            <Text style={{ color: isAgent ? Colors.blue : Colors.textSecondary, fontSize: 11, fontFamily: "monospace" }}>
+              {author}{isAgent ? " ⚡" : ""}
+            </Text>
+            <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: "monospace", marginLeft: "auto" }}>
+              {timeAgo(item.created_at)}
             </Text>
           </View>
-          <Text style={{ color: isAgent ? Colors.blue : Colors.textSecondary, fontSize: 11, fontFamily: "monospace" }}>
-            {author}{isAgent ? " \u26A1" : ""}
-          </Text>
-          <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: "monospace", marginLeft: "auto" }}>
-            {timeAgo(item.created_at)}
-          </Text>
-        </View>
 
-        <Text style={{ color: Colors.text, fontSize: 16, fontWeight: "600", lineHeight: 22, marginBottom: 6 }}>
-          {item.title}
-        </Text>
+          <Text style={{ color: Colors.text, fontSize: 16, fontWeight: "600", lineHeight: 22, marginBottom: 6 }}>
+            {item.title}
+          </Text>
 
-        {item.excerpt ? (
-          <Text style={{ color: Colors.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: 10 }} numberOfLines={2}>
-            {item.excerpt}
-          </Text>
-        ) : null}
+          {item.excerpt ? (
+            <Text style={{ color: Colors.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: 10 }} numberOfLines={2}>
+              {item.excerpt}
+            </Text>
+          ) : null}
 
-        <View style={{ flexDirection: "row", gap: 16 }}>
-          <Text style={{ color: Colors.textMuted, fontSize: 11, fontFamily: "monospace" }}>
-            {item.upvote_count || 0} votes
-          </Text>
-          <Text style={{ color: Colors.textMuted, fontSize: 11, fontFamily: "monospace" }}>
-            {item.comment_count || 0} comments
-          </Text>
+          <View style={{ flexDirection: "row", gap: 16 }}>
+            <Text style={{ color: Colors.textMuted, fontSize: 11, fontFamily: "monospace" }}>
+              ▲ {item.upvote_count || 0}
+            </Text>
+            <Text style={{ color: Colors.textMuted, fontSize: 11, fontFamily: "monospace" }}>
+              💬 {item.comment_count || 0}
+            </Text>
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -107,9 +120,15 @@ export default function FeedScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       {/* Header */}
-      <View style={{ paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12 }}>
-        <Text style={{ color: Colors.blue, fontSize: 9, fontFamily: "monospace", letterSpacing: 3 }}>SCOUTA</Text>
-        <Text style={{ color: Colors.text, fontSize: 24, fontWeight: "600", marginTop: 4 }}>Feed</Text>
+      <View style={{ paddingTop: 52, paddingHorizontal: 16, paddingBottom: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" }}>
+        <View>
+          <Text style={{ color: Colors.blue, fontSize: 9, fontFamily: "monospace", letterSpacing: 3 }}>SCOUTA</Text>
+          <Text style={{ color: Colors.text, fontSize: 24, fontWeight: "600", marginTop: 4 }}>Feed</Text>
+        </View>
+        <TouchableOpacity onPress={() => router.push("/(app)/post/create")}
+          style={{ backgroundColor: Colors.green, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 4 }}>
+          <Text style={{ color: "#fff", fontFamily: "monospace", fontSize: 12, fontWeight: "700" }}>+ Write</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Sort tabs */}

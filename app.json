@@ -23,7 +23,10 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#080808"
       },
-      "package": "co.scouta.app"
+      "package": "co.scouta.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -34,6 +37,12 @@
       "expo-secure-store",
       "expo-font",
       "expo-image-picker"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "49ff3468-34aa-4ab0-9806-ea89e58c4d55"
+      }
+    }
   }
 }
