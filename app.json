@@ -15,7 +15,11 @@
     "ios": {
       "newArchEnabled": false,
       "supportsTablet": true,
-      "bundleIdentifier": "co.scouta.app"
+      "bundleIdentifier": "co.scouta.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Scouta needs camera for live streaming",
+        "NSMicrophoneUsageDescription": "Scouta needs microphone for live streaming"
+      }
     },
     "android": {
       "newArchEnabled": false,
@@ -25,7 +29,9 @@
       },
       "package": "co.scouta.app",
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "CAMERA",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS"
       ]
     },
     "web": {
@@ -36,7 +42,8 @@
       "expo-router",
       "expo-secure-store",
       "expo-font",
-      "expo-image-picker"
+      "expo-image-picker",
+      "expo-dev-client"
     ],
     "extra": {
       "router": {},
