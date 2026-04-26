@@ -1,113 +1,174 @@
-import { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
+import { useEffect, useState, useRef } from "react";
+import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { joinStream } from "@/lib/api";
+import { joinStream, getGiftCatalog, sendGift } from "@/lib/api";
+import { getToken } from "@/lib/auth";
+import { useAuth } from "@/contexts/AuthContext";
 import { Colors, Fonts } from "@/lib/constants";
+
+const API = "https://api.scouta.co/api/v1";
+
+interface ChatMsg { username?: string; display_name?: string; message: string; is_agent?: boolean; }
+interface GiftItem { id: number; name: string; emoji: string; coin_cost: number; }
 
 export default function LiveRoomScreen() {
   const { roomName } = useLocalSearchParams<{ roomName: string }>();
+  const { user } = useAuth();
   const router = useRouter();
-  const [status, setStatus] = useState<"connecting" | "connected" | "error">("connecting");
-  const [token, setToken] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string>("connecting");
+  const [error, setError] = useState("");
+  const [title, setTitle] = useState("");
+  const [viewers, setViewers] = useState(0);
+  const [chat, setChat] = useState<ChatMsg[]>([]);
+  const [msg, setMsg] = useState("");
+  const [showGifts, setShowGifts] = useState(false);
+  const [gifts, setGifts] = useState<GiftItem[]>([]);
+  const [giftAnim, setGiftAnim] = useState<{s:string;e:string;n:string}|null>(null);
+  const wsRef = useRef<WebSocket|null>(null);
+  const chatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
+    var ws: WebSocket|null = null;
+    var interval: any = null;
     (async () => {
       try {
-        const result = await joinStream(roomName);
-        if (result.status === 200 && result.data?.token) {
-          setToken(result.data.token);
-          setStatus("connected");
-        } else {
-          setError(result.data?.detail || "Failed to join stream");
-          setStatus("error");
-        }
-      } catch {
-        setError("Network error");
-        setStatus("error");
-      }
+        var r = await joinStream(roomName as string);
+        if (r.status === 200 && r.data && r.data.token) {
+          setStatus("ok"); setTitle(r.data.title || "");
+          try { var ch = await fetch(API + "/live/" + roomName + "/chat?limit=50"); var cd = await ch.json(); if (cd.messages) setChat(cd.messages); } catch {}
+          var wsUrl = API.replace("https://","wss://").replace("http://","ws://") + "/live/" + roomName + "/ws";
+          ws = new WebSocket(wsUrl); wsRef.current = ws;
+          ws.onmessage = function(e) {
+            try {
+              var m = JSON.parse(e.data);
+              if (m.type === "chat") setChat(function(p) { return p.concat(m).slice(-100); });
+              else if (m.type === "gift") { setGiftAnim({s:m.sender,e:m.emoji,n:m.gift_name}); setTimeout(function(){setGiftAnim(null);}, 3000); }
+              else if (m.type === "stream_ended") setStatus("ended");
+            } catch {}
+          };
+          try { var gd = await getGiftCatalog(); setGifts(gd.gifts || []); } catch {}
+          interval = setInterval(async function() {
+            try {
+              var ar = await fetch(API + "/live/active"); var ad = await ar.json();
+              var found = (ad.streams||[]).find(function(x:any){return x.room_name===roomName;});
+              if (found) setViewers(found.viewer_count); else setStatus("ended");
+            } catch {}
+          }, 10000);
+        } else { setError((r.data && r.data.detail) || "Cannot join"); setStatus("fail"); }
+      } catch { setError("Network error"); setStatus("fail"); }
     })();
+    return function() { if (ws) ws.close(); if (interval) clearInterval(interval); };
   }, [roomName]);
 
+  function send() {
+    if (!msg.trim() || !wsRef.current) return;
+    wsRef.current.send(JSON.stringify({type:"chat",user_id:user?.id,username:user?.username,display_name:user?.display_name||user?.username,message:msg.trim()}));
+    setMsg("");
+  }
+
+  async function doGift(g: GiftItem) {
+    var r = await sendGift(roomName as string, g.id);
+    if (r.ok) setShowGifts(false); else Alert.alert("Error", r.detail || "Not enough coins");
+  }
+
+  function doEnd() {
+    Alert.alert("End Stream?", "This will end the live for everyone.", [
+      {text:"Cancel",style:"cancel"},
+      {text:"End",style:"destructive",onPress:async function(){
+        try{var t=await getToken();await fetch(API+"/live/"+roomName+"/end",{method:"POST",headers:{Authorization:"Bearer "+t}});}catch{}
+        router.back();
+      }}
+    ]);
+  }
+
+  if (status === "ended" || status === "fail") return (
+    <View style={{flex:1,backgroundColor:Colors.bg,alignItems:"center",justifyContent:"center",padding:24}}>
+      <Text style={{fontSize:48,marginBottom:16}}>{status==="ended"?"📡":"⚠️"}</Text>
+      <Text style={{color:Colors.text,fontSize:20,fontWeight:"700",marginBottom:8}}>{status==="ended"?"Stream Ended":"Cannot Join"}</Text>
+      <Text style={{color:Colors.textMuted,fontFamily:Fonts.mono,fontSize:12,marginBottom:24,textAlign:"center"}}>{error||"This stream has ended."}</Text>
+      <TouchableOpacity onPress={function(){router.back();}} style={{borderWidth:1,borderColor:Colors.blue,paddingHorizontal:24,paddingVertical:12,borderRadius:8}}>
+        <Text style={{color:Colors.blue,fontFamily:Fonts.mono}}>Back to Streams</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  if (status === "connecting") return (
+    <View style={{flex:1,backgroundColor:Colors.bg,alignItems:"center",justifyContent:"center"}}>
+      <ActivityIndicator color={Colors.red} size="large" />
+      <Text style={{color:Colors.textMuted,fontFamily:Fonts.mono,fontSize:12,marginTop:16}}>CONNECTING...</Text>
+    </View>
+  );
+
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      {/* Header */}
-      <View style={{ paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={{ color: Colors.blue, fontSize: 12, fontFamily: Fonts.mono }}>{"< Back"}</Text>
+    <View style={{flex:1,backgroundColor:Colors.bg}}>
+      <View style={{paddingTop:48,paddingHorizontal:12,paddingBottom:8,flexDirection:"row",alignItems:"center",backgroundColor:"#000"}}>
+        <TouchableOpacity onPress={function(){router.back();}} style={{padding:4}}>
+          <Text style={{color:"#fff",fontSize:22}}>X</Text>
         </TouchableOpacity>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: status === "connected" ? Colors.green : Colors.red }} />
-          <Text style={{ color: Colors.textSecondary, fontSize: 11, fontFamily: Fonts.mono }}>
-            {status === "connecting" ? "Connecting..." : status === "connected" ? "Live" : "Disconnected"}
-          </Text>
+        <View style={{flex:1,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:6}}>
+          <View style={{width:8,height:8,borderRadius:4,backgroundColor:Colors.red}} />
+          <Text style={{color:Colors.red,fontFamily:Fonts.mono,fontSize:12,fontWeight:"700"}}>LIVE</Text>
+          <Text style={{color:"rgba(255,255,255,0.5)",fontFamily:Fonts.mono,fontSize:11}}>{viewers} watching</Text>
         </View>
+        <TouchableOpacity onPress={doEnd} style={{backgroundColor:Colors.red,paddingHorizontal:12,paddingVertical:6,borderRadius:4}}>
+          <Text style={{color:"#fff",fontFamily:Fonts.mono,fontSize:11,fontWeight:"700"}}>END</Text>
+        </TouchableOpacity>
       </View>
-
-      {/* Room name */}
-      <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
-        <Text style={{ color: Colors.text, fontSize: 20, fontWeight: "600" }}>{roomName}</Text>
+      <View style={{height:"28%",backgroundColor:"#000",alignItems:"center",justifyContent:"center"}}>
+        <Text style={{color:"rgba(255,255,255,0.15)",fontSize:60}}>📡</Text>
+        <Text style={{color:"rgba(255,255,255,0.4)",fontFamily:Fonts.mono,fontSize:12,marginTop:8}}>{title}</Text>
       </View>
-
-      {/* Status area */}
-      {status === "connecting" ? (
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-          <ActivityIndicator color={Colors.green} size="large" />
-          <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono, marginTop: 12 }}>
-            Connecting to stream...
-          </Text>
-        </View>
-      ) : status === "error" ? (
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 32 }}>
-          <Text style={{ color: Colors.red, fontSize: 13, fontFamily: Fonts.mono, textAlign: "center" }}>{error}</Text>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={{ marginTop: 16, paddingVertical: 8, paddingHorizontal: 20, borderWidth: 1, borderColor: Colors.border }}
-          >
-            <Text style={{ color: Colors.textSecondary, fontSize: 12, fontFamily: Fonts.mono }}>Go back</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={{ flex: 1 }}>
-          {/* Video placeholder */}
-          <View style={{
-            marginHorizontal: 16, height: 200, backgroundColor: Colors.card,
-            borderWidth: 1, borderColor: Colors.border,
-            justifyContent: "center", alignItems: "center", marginBottom: 16,
-          }}>
-            <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono }}>
-              Video stream area
-            </Text>
-          </View>
-
-          {/* Chat messages area */}
-          <View style={{
-            flex: 1, marginHorizontal: 16, backgroundColor: Colors.card,
-            borderWidth: 1, borderColor: Colors.border, padding: 12, marginBottom: 12,
-          }}>
-            <Text style={{ color: Colors.textSecondary, fontSize: 11, fontFamily: Fonts.mono, marginBottom: 8 }}>
-              CHAT
-            </Text>
-            <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono }}>
-              Chat messages will appear here...
-            </Text>
-          </View>
-
-          {/* Gift button */}
-          <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
-            <TouchableOpacity
-              style={{
-                backgroundColor: Colors.gold + "22", borderWidth: 1, borderColor: Colors.gold,
-                paddingVertical: 12, alignItems: "center",
-              }}
-            >
-              <Text style={{ color: Colors.gold, fontSize: 13, fontFamily: Fonts.mono, fontWeight: "700" }}>
-                Send Gift
-              </Text>
-            </TouchableOpacity>
+      {giftAnim && (
+        <View style={{position:"absolute",top:"22%",left:0,right:0,alignItems:"center",zIndex:50}}>
+          <View style={{backgroundColor:"rgba(0,0,0,0.9)",paddingHorizontal:24,paddingVertical:14,borderRadius:16,flexDirection:"row",alignItems:"center",gap:10}}>
+            <Text style={{fontSize:36}}>{giftAnim.e}</Text>
+            <View>
+              <Text style={{color:Colors.gold,fontFamily:Fonts.mono,fontSize:12,fontWeight:"700"}}>{giftAnim.s}</Text>
+              <Text style={{color:Colors.textMuted,fontSize:11}}>sent {giftAnim.n}</Text>
+            </View>
           </View>
         </View>
       )}
+      <View style={{flex:1}}>
+        <FlatList ref={chatListRef} data={chat} keyExtractor={function(_,i){return String(i);}}
+          onContentSizeChange={function(){chatListRef.current?.scrollToEnd({animated:false});}}
+          contentContainerStyle={{paddingHorizontal:12,paddingVertical:8}}
+          renderItem={function({item}){return (
+            <View style={{flexDirection:"row",gap:6,paddingVertical:4}}>
+              <Text style={{color:item.is_agent?Colors.blue:Colors.green,fontFamily:Fonts.mono,fontSize:12,fontWeight:"700"}}>{item.display_name||item.username}{item.is_agent?" ⚡":""}</Text>
+              <Text style={{color:Colors.text,fontSize:14,flex:1}}>{item.message}</Text>
+            </View>
+          );}} />
+      </View>
+      {showGifts && (
+        <View style={{backgroundColor:Colors.card,borderTopWidth:1,borderTopColor:Colors.border,padding:12}}>
+          <View style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <Text style={{color:Colors.text,fontWeight:"600",fontSize:14}}>Send a Gift</Text>
+            <TouchableOpacity onPress={function(){setShowGifts(false);}}><Text style={{color:Colors.textMuted,fontSize:20}}>X</Text></TouchableOpacity>
+          </View>
+          <View style={{flexDirection:"row",flexWrap:"wrap",gap:8}}>
+            {gifts.map(function(g){return (
+              <TouchableOpacity key={g.id} onPress={function(){doGift(g);}}
+                style={{backgroundColor:Colors.bg,borderWidth:1,borderColor:Colors.border,borderRadius:12,paddingVertical:12,paddingHorizontal:8,alignItems:"center",width:"30%"}}>
+                <Text style={{fontSize:28}}>{g.emoji}</Text>
+                <Text style={{color:Colors.text,fontSize:11,marginTop:4}}>{g.name}</Text>
+                <Text style={{color:Colors.gold,fontFamily:Fonts.mono,fontSize:10}}>🪙 {g.coin_cost}</Text>
+              </TouchableOpacity>
+            );})}
+          </View>
+        </View>
+      )}
+      <View style={{flexDirection:"row",paddingHorizontal:8,paddingVertical:8,gap:8,borderTopWidth:1,borderTopColor:Colors.border,backgroundColor:Colors.bg}}>
+        <TouchableOpacity onPress={function(){setShowGifts(!showGifts);}} style={{width:42,height:42,borderRadius:21,backgroundColor:showGifts?Colors.gold+"44":Colors.card,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:showGifts?Colors.gold:Colors.border}}>
+          <Text style={{fontSize:20}}>🎁</Text>
+        </TouchableOpacity>
+        <TextInput value={msg} onChangeText={setMsg} onSubmitEditing={send} placeholder="Say something..." placeholderTextColor={Colors.textMuted}
+          style={{flex:1,backgroundColor:Colors.inputBg,borderWidth:1,borderColor:Colors.inputBorder,color:Colors.text,paddingHorizontal:14,paddingVertical:10,borderRadius:24,fontSize:14}} />
+        <TouchableOpacity onPress={send} disabled={!msg.trim()}
+          style={{width:42,height:42,borderRadius:21,backgroundColor:msg.trim()?Colors.green:Colors.card,alignItems:"center",justifyContent:"center"}}>
+          <Text style={{color:"#fff",fontSize:18,fontWeight:"700"}}>↑</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
