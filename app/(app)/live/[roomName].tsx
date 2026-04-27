@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Alert } from "react-native";
+import { WebView } from "react-native-webview";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { joinStream, getGiftCatalog, sendGift } from "@/lib/api";
 import { getToken } from "@/lib/auth";
@@ -7,9 +8,35 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Colors, Fonts } from "@/lib/constants";
 
 const API = "https://api.scouta.co/api/v1";
+const LIVEKIT_URL = "wss://scouta-pi70lg8z.livekit.cloud";
 
 interface ChatMsg { username?: string; display_name?: string; message: string; is_agent?: boolean; }
 interface GiftItem { id: number; name: string; emoji: string; coin_cost: number; }
+
+function getLiveKitHTML(token: string, url: string, isHost: boolean) {
+  return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#000;overflow:hidden}video{width:100%;height:100%;object-fit:contain}#container{width:100vw;height:100vh;display:flex;align-items:center;justify-content:center}#status{color:#888;font-family:monospace;font-size:14px;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}</style>
+<script src="https://unpkg.com/livekit-client@2.9.1/dist/livekit-client.umd.js"></script></head><body>
+<div id="container"><div id="status">Connecting...</div></div>
+<script>
+(async()=>{try{
+const room=new LivekitClient.Room();
+room.on(LivekitClient.RoomEvent.TrackSubscribed,(track,pub,participant)=>{
+  if(track.kind==='video'){const el=track.attach();document.getElementById('container').innerHTML='';document.getElementById('container').appendChild(el);}
+  if(track.kind==='audio'){const el=track.attach();document.body.appendChild(el);}
+});
+room.on(LivekitClient.RoomEvent.Disconnected,()=>{document.getElementById('status')&&(document.getElementById('status').textContent='Stream ended');});
+await room.connect('${url}','${token}');
+document.getElementById('status').textContent='Connected';
+${isHost?`
+await room.localParticipant.setCameraEnabled(true);
+await room.localParticipant.setMicrophoneEnabled(true);
+const vt=room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Camera);
+if(vt&&vt.track){const el=vt.track.attach();document.getElementById('container').innerHTML='';document.getElementById('container').appendChild(el);}
+`:''}
+}catch(e){document.getElementById('status')&&(document.getElementById('status').textContent='Error: '+e.message);}})()
+</script></body></html>`;
+}
 
 export default function LiveRoomScreen() {
   const { roomName } = useLocalSearchParams<{ roomName: string }>();
@@ -19,6 +46,8 @@ export default function LiveRoomScreen() {
   const [error, setError] = useState("");
   const [title, setTitle] = useState("");
   const [viewers, setViewers] = useState(0);
+  const [isHost, setIsHost] = useState(false);
+  const [lkToken, setLkToken] = useState<string | null>(null);
   const [chat, setChat] = useState<ChatMsg[]>([]);
   const [msg, setMsg] = useState("");
   const [showGifts, setShowGifts] = useState(false);
@@ -35,7 +64,16 @@ export default function LiveRoomScreen() {
         var r = await joinStream(roomName as string);
         if (r.status === 200 && r.data && r.data.token) {
           setStatus("ok"); setTitle(r.data.title || "");
+          setLkToken(r.data.token);
+          // Check if this user started the stream (host)
+          try {
+            var ar = await fetch(API + "/live/active"); var ad = await ar.json();
+            var found = (ad.streams||[]).find(function(x:any){return x.room_name===roomName;});
+            if (found && found.host_username === user?.username) setIsHost(true);
+          } catch {}
+          // Chat history
           try { var ch = await fetch(API + "/live/" + roomName + "/chat?limit=50"); var cd = await ch.json(); if (cd.messages) setChat(cd.messages); } catch {}
+          // WebSocket
           var wsUrl = API.replace("https://","wss://").replace("http://","ws://") + "/live/" + roomName + "/ws";
           ws = new WebSocket(wsUrl); wsRef.current = ws;
           ws.onmessage = function(e) {
@@ -46,12 +84,14 @@ export default function LiveRoomScreen() {
               else if (m.type === "stream_ended") setStatus("ended");
             } catch {}
           };
+          // Gifts
           try { var gd = await getGiftCatalog(); setGifts(gd.gifts || []); } catch {}
+          // Viewer count
           interval = setInterval(async function() {
             try {
-              var ar = await fetch(API + "/live/active"); var ad = await ar.json();
-              var found = (ad.streams||[]).find(function(x:any){return x.room_name===roomName;});
-              if (found) setViewers(found.viewer_count); else setStatus("ended");
+              var ar2 = await fetch(API + "/live/active"); var ad2 = await ar2.json();
+              var f2 = (ad2.streams||[]).find(function(x:any){return x.room_name===roomName;});
+              if (f2) setViewers(f2.viewer_count); else setStatus("ended");
             } catch {}
           }, 10000);
         } else { setError((r.data && r.data.detail) || "Cannot join"); setStatus("fail"); }
@@ -101,6 +141,7 @@ export default function LiveRoomScreen() {
 
   return (
     <View style={{flex:1,backgroundColor:Colors.bg}}>
+      {/* Header */}
       <View style={{paddingTop:48,paddingHorizontal:12,paddingBottom:8,flexDirection:"row",alignItems:"center",backgroundColor:"#000"}}>
         <TouchableOpacity onPress={function(){router.back();}} style={{padding:4}}>
           <Text style={{color:"#fff",fontSize:22}}>X</Text>
@@ -110,16 +151,35 @@ export default function LiveRoomScreen() {
           <Text style={{color:Colors.red,fontFamily:Fonts.mono,fontSize:12,fontWeight:"700"}}>LIVE</Text>
           <Text style={{color:"rgba(255,255,255,0.5)",fontFamily:Fonts.mono,fontSize:11}}>{viewers} watching</Text>
         </View>
-        <TouchableOpacity onPress={doEnd} style={{backgroundColor:Colors.red,paddingHorizontal:12,paddingVertical:6,borderRadius:4}}>
-          <Text style={{color:"#fff",fontFamily:Fonts.mono,fontSize:11,fontWeight:"700"}}>END</Text>
-        </TouchableOpacity>
+        {isHost && (
+          <TouchableOpacity onPress={doEnd} style={{backgroundColor:Colors.red,paddingHorizontal:12,paddingVertical:6,borderRadius:4}}>
+            <Text style={{color:"#fff",fontFamily:Fonts.mono,fontSize:11,fontWeight:"700"}}>END</Text>
+          </TouchableOpacity>
+        )}
       </View>
-      <View style={{height:"28%",backgroundColor:"#000",alignItems:"center",justifyContent:"center"}}>
-        <Text style={{color:"rgba(255,255,255,0.15)",fontSize:60}}>📡</Text>
-        <Text style={{color:"rgba(255,255,255,0.4)",fontFamily:Fonts.mono,fontSize:12,marginTop:8}}>{title}</Text>
+
+      {/* Video via WebView */}
+      <View style={{height:"35%",backgroundColor:"#000"}}>
+        {lkToken ? (
+          <WebView
+            source={{html: getLiveKitHTML(lkToken, LIVEKIT_URL, isHost)}}
+            style={{flex:1,backgroundColor:"#000"}}
+            javaScriptEnabled={true}
+            mediaPlaybackRequiresUserAction={false}
+            allowsInlineMediaPlayback={true}
+            mediaCapturePermissionGrantType="grant"
+          />
+        ) : (
+          <View style={{flex:1,alignItems:"center",justifyContent:"center"}}>
+            <Text style={{color:"rgba(255,255,255,0.15)",fontSize:60}}>📡</Text>
+            <Text style={{color:"rgba(255,255,255,0.4)",fontFamily:Fonts.mono,fontSize:12,marginTop:8}}>{title}</Text>
+          </View>
+        )}
       </View>
+
+      {/* Gift animation */}
       {giftAnim && (
-        <View style={{position:"absolute",top:"22%",left:0,right:0,alignItems:"center",zIndex:50}}>
+        <View style={{position:"absolute",top:"25%",left:0,right:0,alignItems:"center",zIndex:50}}>
           <View style={{backgroundColor:"rgba(0,0,0,0.9)",paddingHorizontal:24,paddingVertical:14,borderRadius:16,flexDirection:"row",alignItems:"center",gap:10}}>
             <Text style={{fontSize:36}}>{giftAnim.e}</Text>
             <View>
@@ -129,6 +189,8 @@ export default function LiveRoomScreen() {
           </View>
         </View>
       )}
+
+      {/* Chat */}
       <View style={{flex:1}}>
         <FlatList ref={chatListRef} data={chat} keyExtractor={function(_,i){return String(i);}}
           onContentSizeChange={function(){chatListRef.current?.scrollToEnd({animated:false});}}
@@ -140,6 +202,8 @@ export default function LiveRoomScreen() {
             </View>
           );}} />
       </View>
+
+      {/* Gift picker */}
       {showGifts && (
         <View style={{backgroundColor:Colors.card,borderTopWidth:1,borderTopColor:Colors.border,padding:12}}>
           <View style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -158,6 +222,8 @@ export default function LiveRoomScreen() {
           </View>
         </View>
       )}
+
+      {/* Input */}
       <View style={{flexDirection:"row",paddingHorizontal:8,paddingVertical:8,gap:8,borderTopWidth:1,borderTopColor:Colors.border,backgroundColor:Colors.bg}}>
         <TouchableOpacity onPress={function(){setShowGifts(!showGifts);}} style={{width:42,height:42,borderRadius:21,backgroundColor:showGifts?Colors.gold+"44":Colors.card,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:showGifts?Colors.gold:Colors.border}}>
           <Text style={{fontSize:20}}>🎁</Text>
