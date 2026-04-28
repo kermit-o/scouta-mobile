@@ -1,41 +1,32 @@
 import { useEffect, useState, useRef } from "react";
 import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Alert } from "react-native";
-import { WebView } from "react-native-webview";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { joinStream, getGiftCatalog, sendGift } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
-import { Colors, Fonts } from "@/lib/constants";
-
-const API = "https://api.scouta.co/api/v1";
-const LIVEKIT_URL = "wss://scouta-pi70lg8z.livekit.cloud";
+import { Colors, Fonts, LIVEKIT_URL, API_BASE } from "@/lib/constants";
+import { takePendingHostToken } from "@/lib/liveTokenStore";
+import { LiveKitRoom, AudioSession, VideoTrack, useTracks } from "@livekit/react-native";
+import { Track } from "livekit-client";
 
 interface ChatMsg { username?: string; display_name?: string; message: string; is_agent?: boolean; }
 interface GiftItem { id: number; name: string; emoji: string; coin_cost: number; }
 
-function getLiveKitHTML(token: string, url: string, isHost: boolean) {
-  return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#000;overflow:hidden}video{width:100%;height:100%;object-fit:contain}#container{width:100vw;height:100vh;display:flex;align-items:center;justify-content:center}#status{color:#888;font-family:monospace;font-size:14px;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}</style>
-<script src="https://unpkg.com/livekit-client@2.9.1/dist/livekit-client.umd.js"></script></head><body>
-<div id="container"><div id="status">Connecting...</div></div>
-<script>
-(async()=>{try{
-const room=new LivekitClient.Room();
-room.on(LivekitClient.RoomEvent.TrackSubscribed,(track,pub,participant)=>{
-  if(track.kind==='video'){const el=track.attach();document.getElementById('container').innerHTML='';document.getElementById('container').appendChild(el);}
-  if(track.kind==='audio'){const el=track.attach();document.body.appendChild(el);}
-});
-room.on(LivekitClient.RoomEvent.Disconnected,()=>{document.getElementById('status')&&(document.getElementById('status').textContent='Stream ended');});
-await room.connect('${url}','${token}');
-document.getElementById('status').textContent='Connected';
-${isHost?`
-await room.localParticipant.setCameraEnabled(true);
-await room.localParticipant.setMicrophoneEnabled(true);
-const vt=room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Camera);
-if(vt&&vt.track){const el=vt.track.attach();document.getElementById('container').innerHTML='';document.getElementById('container').appendChild(el);}
-`:''}
-}catch(e){document.getElementById('status')&&(document.getElementById('status').textContent='Error: '+e.message);}})()
-</script></body></html>`;
+function VideoArea({ title, isHost }: { title: string; isHost: boolean }) {
+  const tracks = useTracks([Track.Source.Camera], { onlySubscribed: false });
+  const camTrack = tracks.find(t => !!t.publication);
+  if (!camTrack) {
+    return (
+      <View style={{flex:1,alignItems:"center",justifyContent:"center"}}>
+        <ActivityIndicator color={Colors.textMuted} size="small" />
+        <Text style={{color:"rgba(255,255,255,0.5)",fontFamily:Fonts.mono,fontSize:11,marginTop:10}}>
+          {isHost ? "Starting camera..." : "Waiting for host..."}
+        </Text>
+        {title ? <Text style={{color:"rgba(255,255,255,0.3)",fontFamily:Fonts.mono,fontSize:10,marginTop:4}}>{title}</Text> : null}
+      </View>
+    );
+  }
+  return <VideoTrack trackRef={camTrack} style={{flex:1,backgroundColor:"#000"}} objectFit="cover" mirror={isHost && camTrack.participant?.isLocal} />;
 }
 
 export default function LiveRoomScreen() {
@@ -57,45 +48,77 @@ export default function LiveRoomScreen() {
   const chatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
+    AudioSession.startAudioSession();
+    return () => { AudioSession.stopAudioSession(); };
+  }, []);
+
+  useEffect(() => {
     var ws: WebSocket|null = null;
     var interval: any = null;
     (async () => {
       try {
-        var r = await joinStream(roomName as string);
-        if (r.status === 200 && r.data && r.data.token) {
-          setStatus("ok"); setTitle(r.data.title || "");
-          setLkToken(r.data.token);
-          // Check if this user started the stream (host)
+        var pending = takePendingHostToken(roomName as string);
+        var lkTok: string;
+        var streamTitle = "";
+        var amHost = false;
+        if (pending) {
+          lkTok = pending.token;
+          streamTitle = pending.title || "";
+          amHost = true;
+          console.log("[live/room] using host token from store");
+        } else {
+          var r = await joinStream(roomName as string);
+          if (!(r.status === 200 && r.data && r.data.token)) {
+            setError((r.data && r.data.detail) || "Cannot join");
+            setStatus("fail");
+            return;
+          }
+          lkTok = r.data.token;
+          streamTitle = r.data.title || "";
+        }
+
+        try {
+          var ar = await fetch(API_BASE + "/live/active");
+          var ad = await ar.json();
+          var found = (ad.streams||[]).find(function(x:any){return x.room_name===roomName;});
+          if (found) {
+            if (!streamTitle && found.title) streamTitle = found.title;
+            if (found.host_username === user?.username) amHost = true;
+          }
+        } catch {}
+
+        setTitle(streamTitle);
+        setIsHost(amHost);
+        setLkToken(lkTok);
+        setStatus("ok");
+
+        try { var ch = await fetch(API_BASE + "/live/" + roomName + "/chat?limit=50"); var cd = await ch.json(); if (cd.messages) setChat(cd.messages); } catch {}
+
+        var wsUrl = API_BASE.replace("https://","wss://").replace("http://","ws://") + "/live/" + roomName + "/ws";
+        ws = new WebSocket(wsUrl); wsRef.current = ws;
+        ws.onmessage = function(e) {
           try {
-            var ar = await fetch(API + "/live/active"); var ad = await ar.json();
-            var found = (ad.streams||[]).find(function(x:any){return x.room_name===roomName;});
-            if (found && found.host_username === user?.username) setIsHost(true);
+            var m = JSON.parse(e.data);
+            if (m.type === "chat") setChat(function(p) { return p.concat(m).slice(-100); });
+            else if (m.type === "gift") { setGiftAnim({s:m.sender,e:m.emoji,n:m.gift_name}); setTimeout(function(){setGiftAnim(null);}, 3000); }
+            else if (m.type === "stream_ended") setStatus("ended");
           } catch {}
-          // Chat history
-          try { var ch = await fetch(API + "/live/" + roomName + "/chat?limit=50"); var cd = await ch.json(); if (cd.messages) setChat(cd.messages); } catch {}
-          // WebSocket
-          var wsUrl = API.replace("https://","wss://").replace("http://","ws://") + "/live/" + roomName + "/ws";
-          ws = new WebSocket(wsUrl); wsRef.current = ws;
-          ws.onmessage = function(e) {
-            try {
-              var m = JSON.parse(e.data);
-              if (m.type === "chat") setChat(function(p) { return p.concat(m).slice(-100); });
-              else if (m.type === "gift") { setGiftAnim({s:m.sender,e:m.emoji,n:m.gift_name}); setTimeout(function(){setGiftAnim(null);}, 3000); }
-              else if (m.type === "stream_ended") setStatus("ended");
-            } catch {}
-          };
-          // Gifts
-          try { var gd = await getGiftCatalog(); setGifts(gd.gifts || []); } catch {}
-          // Viewer count
-          interval = setInterval(async function() {
-            try {
-              var ar2 = await fetch(API + "/live/active"); var ad2 = await ar2.json();
-              var f2 = (ad2.streams||[]).find(function(x:any){return x.room_name===roomName;});
-              if (f2) setViewers(f2.viewer_count); else setStatus("ended");
-            } catch {}
-          }, 10000);
-        } else { setError((r.data && r.data.detail) || "Cannot join"); setStatus("fail"); }
-      } catch { setError("Network error"); setStatus("fail"); }
+        };
+
+        try { var gd = await getGiftCatalog(); setGifts(gd.gifts || []); } catch {}
+
+        interval = setInterval(async function() {
+          try {
+            var ar2 = await fetch(API_BASE + "/live/active"); var ad2 = await ar2.json();
+            var f2 = (ad2.streams||[]).find(function(x:any){return x.room_name===roomName;});
+            if (f2) setViewers(f2.viewer_count); else setStatus("ended");
+          } catch {}
+        }, 10000);
+      } catch (e: any) {
+        console.log("[live/room] exception", e);
+        setError("Network error");
+        setStatus("fail");
+      }
     })();
     return function() { if (ws) ws.close(); if (interval) clearInterval(interval); };
   }, [roomName]);
@@ -115,7 +138,7 @@ export default function LiveRoomScreen() {
     Alert.alert("End Stream?", "This will end the live for everyone.", [
       {text:"Cancel",style:"cancel"},
       {text:"End",style:"destructive",onPress:async function(){
-        try{var t=await getToken();await fetch(API+"/live/"+roomName+"/end",{method:"POST",headers:{Authorization:"Bearer "+t}});}catch{}
+        try{var t=await getToken();await fetch(API_BASE+"/live/"+roomName+"/end",{method:"POST",headers:{Authorization:"Bearer "+t}});}catch{}
         router.back();
       }}
     ]);
@@ -123,7 +146,7 @@ export default function LiveRoomScreen() {
 
   if (status === "ended" || status === "fail") return (
     <View style={{flex:1,backgroundColor:Colors.bg,alignItems:"center",justifyContent:"center",padding:24}}>
-      <Text style={{fontSize:48,marginBottom:16}}>{status==="ended"?"📡":"⚠️"}</Text>
+      <Text style={{fontSize:48,marginBottom:16}}>{status==="ended"?"[off]":"[!]"}</Text>
       <Text style={{color:Colors.text,fontSize:20,fontWeight:"700",marginBottom:8}}>{status==="ended"?"Stream Ended":"Cannot Join"}</Text>
       <Text style={{color:Colors.textMuted,fontFamily:Fonts.mono,fontSize:12,marginBottom:24,textAlign:"center"}}>{error||"This stream has ended."}</Text>
       <TouchableOpacity onPress={function(){router.back();}} style={{borderWidth:1,borderColor:Colors.blue,paddingHorizontal:24,paddingVertical:12,borderRadius:8}}>
@@ -141,7 +164,6 @@ export default function LiveRoomScreen() {
 
   return (
     <View style={{flex:1,backgroundColor:Colors.bg}}>
-      {/* Header */}
       <View style={{paddingTop:48,paddingHorizontal:12,paddingBottom:8,flexDirection:"row",alignItems:"center",backgroundColor:"#000"}}>
         <TouchableOpacity onPress={function(){router.back();}} style={{padding:4}}>
           <Text style={{color:"#fff",fontSize:22}}>X</Text>
@@ -158,26 +180,33 @@ export default function LiveRoomScreen() {
         )}
       </View>
 
-      {/* Video via WebView */}
       <View style={{height:"35%",backgroundColor:"#000"}}>
         {lkToken ? (
-          <WebView
-            source={{html: getLiveKitHTML(lkToken, LIVEKIT_URL, isHost)}}
-            style={{flex:1,backgroundColor:"#000"}}
-            javaScriptEnabled={true}
-            mediaPlaybackRequiresUserAction={false}
-            allowsInlineMediaPlayback={true}
-            mediaCapturePermissionGrantType="grant"
-          />
+          <LiveKitRoom
+            serverUrl={LIVEKIT_URL}
+            token={lkToken}
+            connect={true}
+            audio={isHost}
+            video={isHost}
+            options={{
+              adaptiveStream: false,
+              dynacast: false,
+              publishDefaults: { simulcast: false, videoCodec: "h264" },
+            }}
+            onError={(e: any) => { console.log("[lk] error", e?.message || e); setError(e?.message || "LiveKit error"); }}
+            onConnected={() => console.log("[lk] connected")}
+            onDisconnected={(reason: any) => console.log("[lk] disconnected", reason)}
+          >
+            <VideoArea title={title} isHost={isHost} />
+          </LiveKitRoom>
         ) : (
           <View style={{flex:1,alignItems:"center",justifyContent:"center"}}>
-            <Text style={{color:"rgba(255,255,255,0.15)",fontSize:60}}>📡</Text>
+            <Text style={{color:"rgba(255,255,255,0.15)",fontSize:60}}>[live]</Text>
             <Text style={{color:"rgba(255,255,255,0.4)",fontFamily:Fonts.mono,fontSize:12,marginTop:8}}>{title}</Text>
           </View>
         )}
       </View>
 
-      {/* Gift animation */}
       {giftAnim && (
         <View style={{position:"absolute",top:"25%",left:0,right:0,alignItems:"center",zIndex:50}}>
           <View style={{backgroundColor:"rgba(0,0,0,0.9)",paddingHorizontal:24,paddingVertical:14,borderRadius:16,flexDirection:"row",alignItems:"center",gap:10}}>
@@ -190,20 +219,18 @@ export default function LiveRoomScreen() {
         </View>
       )}
 
-      {/* Chat */}
       <View style={{flex:1}}>
         <FlatList ref={chatListRef} data={chat} keyExtractor={function(_,i){return String(i);}}
           onContentSizeChange={function(){chatListRef.current?.scrollToEnd({animated:false});}}
           contentContainerStyle={{paddingHorizontal:12,paddingVertical:8}}
           renderItem={function({item}){return (
             <View style={{flexDirection:"row",gap:6,paddingVertical:4}}>
-              <Text style={{color:item.is_agent?Colors.blue:Colors.green,fontFamily:Fonts.mono,fontSize:12,fontWeight:"700"}}>{item.display_name||item.username}{item.is_agent?" ⚡":""}</Text>
+              <Text style={{color:item.is_agent?Colors.blue:Colors.green,fontFamily:Fonts.mono,fontSize:12,fontWeight:"700"}}>{item.display_name||item.username}{item.is_agent?" *":""}</Text>
               <Text style={{color:Colors.text,fontSize:14,flex:1}}>{item.message}</Text>
             </View>
           );}} />
       </View>
 
-      {/* Gift picker */}
       {showGifts && (
         <View style={{backgroundColor:Colors.card,borderTopWidth:1,borderTopColor:Colors.border,padding:12}}>
           <View style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -216,23 +243,22 @@ export default function LiveRoomScreen() {
                 style={{backgroundColor:Colors.bg,borderWidth:1,borderColor:Colors.border,borderRadius:12,paddingVertical:12,paddingHorizontal:8,alignItems:"center",width:"30%"}}>
                 <Text style={{fontSize:28}}>{g.emoji}</Text>
                 <Text style={{color:Colors.text,fontSize:11,marginTop:4}}>{g.name}</Text>
-                <Text style={{color:Colors.gold,fontFamily:Fonts.mono,fontSize:10}}>🪙 {g.coin_cost}</Text>
+                <Text style={{color:Colors.gold,fontFamily:Fonts.mono,fontSize:10}}>{g.coin_cost} coins</Text>
               </TouchableOpacity>
             );})}
           </View>
         </View>
       )}
 
-      {/* Input */}
       <View style={{flexDirection:"row",paddingHorizontal:8,paddingVertical:8,gap:8,borderTopWidth:1,borderTopColor:Colors.border,backgroundColor:Colors.bg}}>
         <TouchableOpacity onPress={function(){setShowGifts(!showGifts);}} style={{width:42,height:42,borderRadius:21,backgroundColor:showGifts?Colors.gold+"44":Colors.card,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:showGifts?Colors.gold:Colors.border}}>
-          <Text style={{fontSize:20}}>🎁</Text>
+          <Text style={{fontSize:20}}>G</Text>
         </TouchableOpacity>
         <TextInput value={msg} onChangeText={setMsg} onSubmitEditing={send} placeholder="Say something..." placeholderTextColor={Colors.textMuted}
           style={{flex:1,backgroundColor:Colors.inputBg,borderWidth:1,borderColor:Colors.inputBorder,color:Colors.text,paddingHorizontal:14,paddingVertical:10,borderRadius:24,fontSize:14}} />
         <TouchableOpacity onPress={send} disabled={!msg.trim()}
           style={{width:42,height:42,borderRadius:21,backgroundColor:msg.trim()?Colors.green:Colors.card,alignItems:"center",justifyContent:"center"}}>
-          <Text style={{color:"#fff",fontSize:18,fontWeight:"700"}}>↑</Text>
+          <Text style={{color:"#fff",fontSize:18,fontWeight:"700"}}>{">"}</Text>
         </TouchableOpacity>
       </View>
     </View>

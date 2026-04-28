@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator,
 import { useRouter } from "expo-router";
 import { Colors, Fonts, API_BASE } from "@/lib/constants";
 import { getToken } from "@/lib/auth";
+import { setPendingHostToken } from "@/lib/liveTokenStore";
 
 export default function GoLiveScreen() {
   const router = useRouter();
@@ -20,20 +21,57 @@ export default function GoLiveScreen() {
     setLoading(true); setError("");
     try {
       const token = await getToken();
+      if (!token) {
+        setError("Not authenticated. Please log in again.");
+        setLoading(false);
+        return;
+      }
       const body: any = { title: title.trim(), description: description.trim() };
       if (isPrivate) {
         body.is_private = true; body.access_type = accessType;
         if (accessType === "password") body.password = password;
         if (accessType === "paid") body.entry_coin_cost = parseInt(entryCost) || 0;
       }
-      const res = await fetch(`${API_BASE}/live/start`, {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      const url = `${API_BASE}/live/start`;
+      console.log("[live/start] POST", url, "body:", body);
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
-      if (data.room_name) { router.replace(`/(app)/live/${data.room_name}`); }
-      else { setError(data.detail || "Failed to start"); }
-    } catch { setError("Network error"); }
+      const text = await res.text();
+      console.log("[live/start] status", res.status, "raw:", text.slice(0, 500));
+      let data: any = {};
+      try { data = text ? JSON.parse(text) : {}; } catch { data = { detail: text }; }
+
+      if (!res.ok) {
+        const detail = typeof data.detail === "string"
+          ? data.detail
+          : Array.isArray(data.detail)
+            ? data.detail.map((d: any) => d.msg || JSON.stringify(d)).join("; ")
+            : JSON.stringify(data.detail || data).slice(0, 200);
+        setError(`HTTP ${res.status}: ${detail || "Failed to start"}`);
+        setLoading(false);
+        return;
+      }
+
+      const roomName =
+        data.room_name ||
+        data.name ||
+        (data.room && (data.room.room_name || data.room.name)) ||
+        null;
+      if (roomName) {
+        if (data.token) {
+          setPendingHostToken(roomName, data.token, data.title || title.trim());
+        }
+        router.replace(`/(app)/live/${roomName}`);
+      } else {
+        setError(`Unexpected response shape: ${text.slice(0, 200)}`);
+      }
+    } catch (e: any) {
+      console.log("[live/start] exception:", e);
+      setError(`Network error: ${e?.message || "unknown"}`);
+    }
     setLoading(false);
   }
 
