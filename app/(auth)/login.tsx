@@ -1,10 +1,8 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Linking } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
 import { useRouter, Link } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors } from "@/lib/constants";
-
-const API = "https://api.scouta.co/api/v1";
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -28,7 +26,7 @@ export default function LoginScreen() {
   }
 
   function handleGoogleLogin() {
-    Linking.openURL(`${API}/auth/google?redirect_mobile=1`);
+    router.push("/(auth)/google");
   }
 
   return (
