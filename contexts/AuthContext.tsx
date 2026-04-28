@@ -9,6 +9,7 @@ interface AuthState {
   loading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  loginWithToken: (token: string) => Promise<{ ok: boolean; error?: string }>;
   register: (email: string, password: string, username: string, displayName?: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -20,6 +21,7 @@ const AuthContext = createContext<AuthState>({
   loading: true,
   isAuthenticated: false,
   login: async () => ({ ok: false }),
+  loginWithToken: async () => ({ ok: false }),
   register: async () => ({ ok: false }),
   logout: async () => {},
   refreshUser: async () => {},
@@ -70,6 +72,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  async function loginWithToken(jwt: string) {
+    try {
+      await saveToken(jwt);
+      setToken(jwt);
+      const me = await api.getMe();
+      if (me?.id) {
+        setUser(me);
+        await saveUser(me);
+        return { ok: true };
+      }
+      await clearAuth();
+      setToken(null);
+      return { ok: false, error: "Could not load profile" };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || "Network error" };
+    }
+  }
+
   async function register(email: string, password: string, username: string, displayName?: string) {
     try {
       const data = await api.register(email, password, username, displayName);
@@ -107,7 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, token, loading, isAuthenticated: !!user, login, register, logout, refreshUser }}
+      value={{ user, token, loading, isAuthenticated: !!user, login, loginWithToken, register, logout, refreshUser }}
     >
       {children}
     </AuthContext.Provider>
