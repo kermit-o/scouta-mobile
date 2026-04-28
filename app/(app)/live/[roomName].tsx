@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Alert } from "react-native";
+import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Alert, Animated, Easing, Share } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { joinStream, getGiftCatalog, sendGift } from "@/lib/api";
 import { getToken } from "@/lib/auth";
@@ -11,6 +11,7 @@ import { Track } from "livekit-client";
 
 interface ChatMsg { username?: string; display_name?: string; message: string; is_agent?: boolean; }
 interface GiftItem { id: number; name: string; emoji: string; coin_cost: number; }
+interface FloatingHeart { id: number; anim: Animated.Value; xOffset: number; }
 
 function VideoArea({ title, isHost }: { title: string; isHost: boolean }) {
   const tracks = useTracks([Track.Source.Camera], { onlySubscribed: false });
@@ -44,8 +45,10 @@ export default function LiveRoomScreen() {
   const [showGifts, setShowGifts] = useState(false);
   const [gifts, setGifts] = useState<GiftItem[]>([]);
   const [giftAnim, setGiftAnim] = useState<{s:string;e:string;n:string}|null>(null);
+  const [hearts, setHearts] = useState<FloatingHeart[]>([]);
   const wsRef = useRef<WebSocket|null>(null);
   const chatListRef = useRef<FlatList>(null);
+  const heartIdRef = useRef(0);
 
   useEffect(() => {
     AudioSession.startAudioSession();
@@ -144,6 +147,31 @@ export default function LiveRoomScreen() {
     ]);
   }
 
+  function tapHeart() {
+    const id = heartIdRef.current++;
+    const anim = new Animated.Value(0);
+    const xOffset = (Math.random() - 0.5) * 60;
+    setHearts(prev => [...prev, { id, anim, xOffset }]);
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 1800,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start(() => {
+      setHearts(prev => prev.filter(h => h.id !== id));
+    });
+  }
+
+  async function shareStream() {
+    try {
+      const url = `https://scouta.co/live/${roomName}`;
+      const message = title ? `${title} — Live now on Scouta\n${url}` : `Live now on Scouta\n${url}`;
+      await Share.share({ message, url, title: title || "Live on Scouta" });
+    } catch (e: any) {
+      console.log("[live/share] error", e?.message || e);
+    }
+  }
+
   if (status === "ended" || status === "fail") return (
     <View style={{flex:1,backgroundColor:Colors.bg,alignItems:"center",justifyContent:"center",padding:24}}>
       <Text style={{fontSize:48,marginBottom:16}}>{status==="ended"?"[off]":"[!]"}</Text>
@@ -231,6 +259,21 @@ export default function LiveRoomScreen() {
           );}} />
       </View>
 
+      {/* Floating hearts (local-only optimistic, no sync until backend reaction endpoint) */}
+      <View pointerEvents="none" style={{position:"absolute",right:4,bottom:60,width:90,height:240}}>
+        {hearts.map(function(h){
+          var translateY = h.anim.interpolate({inputRange:[0,1],outputRange:[0,-220]});
+          var translateX = h.anim.interpolate({inputRange:[0,0.5,1],outputRange:[0,h.xOffset,h.xOffset*1.4]});
+          var opacity = h.anim.interpolate({inputRange:[0,0.7,1],outputRange:[1,1,0]});
+          var scale = h.anim.interpolate({inputRange:[0,0.2,1],outputRange:[0.6,1.3,1]});
+          return (
+            <Animated.View key={h.id} style={{position:"absolute",right:30,bottom:0,transform:[{translateY},{translateX},{scale}],opacity}}>
+              <Text style={{fontSize:30,color:Colors.red}}>{"♥"}</Text>
+            </Animated.View>
+          );
+        })}
+      </View>
+
       {showGifts && (
         <View style={{backgroundColor:Colors.card,borderTopWidth:1,borderTopColor:Colors.border,padding:12}}>
           <View style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -250,15 +293,21 @@ export default function LiveRoomScreen() {
         </View>
       )}
 
-      <View style={{flexDirection:"row",paddingHorizontal:8,paddingVertical:8,gap:8,borderTopWidth:1,borderTopColor:Colors.border,backgroundColor:Colors.bg}}>
-        <TouchableOpacity onPress={function(){setShowGifts(!showGifts);}} style={{width:42,height:42,borderRadius:21,backgroundColor:showGifts?Colors.gold+"44":Colors.card,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:showGifts?Colors.gold:Colors.border}}>
-          <Text style={{fontSize:20}}>G</Text>
+      <View style={{flexDirection:"row",paddingHorizontal:8,paddingVertical:8,gap:6,borderTopWidth:1,borderTopColor:Colors.border,backgroundColor:Colors.bg,alignItems:"center"}}>
+        <TouchableOpacity onPress={function(){setShowGifts(!showGifts);}} style={{width:38,height:38,borderRadius:19,backgroundColor:showGifts?Colors.gold+"44":Colors.card,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:showGifts?Colors.gold:Colors.border}}>
+          <Text style={{fontSize:18,color:Colors.text}}>G</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={tapHeart} style={{width:38,height:38,borderRadius:19,backgroundColor:Colors.card,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:Colors.border}}>
+          <Text style={{fontSize:18,color:Colors.red}}>{"♥"}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={shareStream} style={{width:38,height:38,borderRadius:19,backgroundColor:Colors.card,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:Colors.border}}>
+          <Text style={{fontSize:18,color:Colors.blue}}>{"↗"}</Text>
         </TouchableOpacity>
         <TextInput value={msg} onChangeText={setMsg} onSubmitEditing={send} placeholder="Say something..." placeholderTextColor={Colors.textMuted}
-          style={{flex:1,backgroundColor:Colors.inputBg,borderWidth:1,borderColor:Colors.inputBorder,color:Colors.text,paddingHorizontal:14,paddingVertical:10,borderRadius:24,fontSize:14}} />
+          style={{flex:1,backgroundColor:Colors.inputBg,borderWidth:1,borderColor:Colors.inputBorder,color:Colors.text,paddingHorizontal:12,paddingVertical:8,borderRadius:19,fontSize:14,height:38}} />
         <TouchableOpacity onPress={send} disabled={!msg.trim()}
-          style={{width:42,height:42,borderRadius:21,backgroundColor:msg.trim()?Colors.green:Colors.card,alignItems:"center",justifyContent:"center"}}>
-          <Text style={{color:"#fff",fontSize:18,fontWeight:"700"}}>{">"}</Text>
+          style={{width:38,height:38,borderRadius:19,backgroundColor:msg.trim()?Colors.green:Colors.card,alignItems:"center",justifyContent:"center"}}>
+          <Text style={{color:"#fff",fontSize:16,fontWeight:"700"}}>{">"}</Text>
         </TouchableOpacity>
       </View>
     </View>
