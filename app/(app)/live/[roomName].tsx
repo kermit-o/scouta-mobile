@@ -71,6 +71,16 @@ export default function LiveRoomScreen() {
           console.log("[live/room] using host token from store");
         } else {
           var r = await joinStream(roomName as string);
+          if (r.status === 409 && r.data && r.data.detail === "already_broadcasting") {
+            Alert.alert(
+              "Already streaming",
+              "You're already broadcasting this stream from another device. Open the live there, or end it first to join from here.",
+              [{ text: "OK", onPress: function(){ router.back(); } }]
+            );
+            setError("You're already streaming this from another device.");
+            setStatus("fail");
+            return;
+          }
           if (!(r.status === 200 && r.data && r.data.token)) {
             setError((r.data && r.data.detail) || "Cannot join");
             setStatus("fail");
