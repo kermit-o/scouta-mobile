@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { View, Text, TextInput, FlatList, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { globalSearch } from "@/lib/api";
 import { Colors, Fonts } from "@/lib/constants";
+import { EmptyState } from "@/components/ui";
 
 interface SearchResult {
   id: number;
@@ -86,18 +88,22 @@ export default function SearchScreen() {
       <View style={{ paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12 }}>
         <Text style={{ color: Colors.blue, fontSize: 9, fontFamily: Fonts.mono, letterSpacing: 3 }}>SCOUTA</Text>
         <Text style={{ color: Colors.text, fontSize: 24, fontWeight: "600", marginTop: 4, marginBottom: 12 }}>Search</Text>
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search posts, users, agents..."
-          placeholderTextColor={Colors.textMuted}
-          autoFocus
-          style={{
-            color: Colors.text, fontSize: 14,
-            backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder,
-            paddingHorizontal: 12, paddingVertical: 10,
-          }}
-        />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder, paddingHorizontal: 12 }}>
+          <Ionicons name="search" size={16} color={Colors.textMuted} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search posts, users, agents..."
+            placeholderTextColor={Colors.textMuted}
+            autoFocus
+            style={{ flex: 1, color: Colors.text, fontSize: 14, paddingVertical: 10 }}
+          />
+          {query.length > 0 ? (
+            <TouchableOpacity onPress={() => setQuery("")} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close-circle" size={16} color={Colors.textMuted} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
 
       {loading ? (
@@ -108,13 +114,7 @@ export default function SearchScreen() {
           keyExtractor={(item, i) => `${item.type}-${item.id}-${i}`}
           renderItem={renderResult}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
-          ListEmptyComponent={
-            searched ? (
-              <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono, textAlign: "center", marginTop: 40 }}>
-                No results found.
-              </Text>
-            ) : null
-          }
+          ListEmptyComponent={searched ? <EmptyState icon="search-outline" text="No results found." /> : null}
         />
       )}
     </View>

@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import {
-  View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, ScrollView,
+  View, Text, TouchableOpacity, RefreshControl, ScrollView,
 } from "react-native";
 import { getCoinBalance, getCoinPackages, getCoinTransactions, getEarnings, purchaseCoins } from "@/lib/api";
 import { Colors, Fonts } from "@/lib/constants";
-import { BackButton } from "@/components/ui";
+import { BackButton, Loading, SectionLabel } from "@/components/ui";
 import type { CoinPackage } from "@/lib/types";
 
 interface Transaction {
@@ -64,13 +64,7 @@ export default function CoinWalletScreen() {
     return `${Math.floor(h / 24)}d`;
   }
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator color={Colors.green} />
-      </View>
-    );
-  }
+  if (loading) return <Loading />;
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -88,7 +82,7 @@ export default function CoinWalletScreen() {
           backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.gold + "44",
           padding: 20, alignItems: "center", marginBottom: 20,
         }}>
-          <Text style={{ color: Colors.textSecondary, fontSize: 11, fontFamily: Fonts.mono, marginBottom: 4 }}>BALANCE</Text>
+          <SectionLabel style={{ marginBottom: 4 }}>BALANCE</SectionLabel>
           <Text style={{ color: Colors.gold, fontSize: 36, fontFamily: Fonts.mono, fontWeight: "700" }}>{balance}</Text>
           <Text style={{ color: Colors.textMuted, fontSize: 11, fontFamily: Fonts.mono }}>coins</Text>
         </View>
@@ -99,7 +93,7 @@ export default function CoinWalletScreen() {
             backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border,
             padding: 16, marginBottom: 20,
           }}>
-            <Text style={{ color: Colors.textSecondary, fontSize: 11, fontFamily: Fonts.mono, marginBottom: 8 }}>EARNINGS</Text>
+            <SectionLabel>EARNINGS</SectionLabel>
             <Text style={{ color: Colors.text, fontSize: 13, fontFamily: Fonts.mono }}>
               Total: {earnings.total_earned ?? 0} coins
             </Text>
@@ -109,7 +103,7 @@ export default function CoinWalletScreen() {
         {/* Packages */}
         {packages.length > 0 ? (
           <View style={{ marginBottom: 20 }}>
-            <Text style={{ color: Colors.textSecondary, fontSize: 11, fontFamily: Fonts.mono, marginBottom: 8 }}>BUY COINS</Text>
+            <SectionLabel>BUY COINS</SectionLabel>
             {packages.map((pkg) => (
               <TouchableOpacity
                 key={pkg.id}
@@ -139,7 +133,7 @@ export default function CoinWalletScreen() {
         ) : null}
 
         {/* Transaction history */}
-        <Text style={{ color: Colors.textSecondary, fontSize: 11, fontFamily: Fonts.mono, marginBottom: 8 }}>HISTORY</Text>
+        <SectionLabel>HISTORY</SectionLabel>
         {transactions.length > 0 ? (
           transactions.map((tx) => (
             <View

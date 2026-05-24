@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { getActiveStreams } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors, Fonts } from "@/lib/constants";
+import { EmptyState } from "@/components/ui";
 import type { LiveStream } from "@/lib/types";
 
 export default function LiveListScreen() {
@@ -29,7 +31,8 @@ export default function LiveListScreen() {
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <TouchableOpacity onPress={() => router.push("/(app)/live/replays")}
-            style={{ borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 4 }}>
+            style={{ borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 4, flexDirection: "row", alignItems: "center", gap: 5 }}>
+            <Ionicons name="film-outline" size={14} color={Colors.textMuted} />
             <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 12 }}>Replays</Text>
           </TouchableOpacity>
           {token && (
@@ -45,15 +48,23 @@ export default function LiveListScreen() {
         <FlatList data={streams} keyExtractor={item => item.room_name}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={Colors.green} />}
-          ListEmptyComponent={<Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono, textAlign: "center", marginTop: 60 }}>No active streams right now.</Text>}
+          ListEmptyComponent={<EmptyState icon="radio-outline" text="No active streams right now." />}
           renderItem={({ item }) => (
             <TouchableOpacity onPress={() => router.push(`/(app)/live/${item.room_name}`)}
               style={{ backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, padding: 16, marginBottom: 8 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
                 <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.red }} />
                 <Text style={{ color: Colors.red, fontFamily: Fonts.mono, fontSize: 10 }}>LIVE</Text>
-                {item.is_private && <Text style={{ color: Colors.gold, fontFamily: Fonts.mono, fontSize: 9, borderWidth: 1, borderColor: Colors.gold + "44", paddingHorizontal: 6, paddingVertical: 1 }}>PRIVATE</Text>}
-                <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 10, marginLeft: "auto" }}>{item.viewer_count} watching</Text>
+                {item.is_private && (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 3, borderWidth: 1, borderColor: Colors.gold + "44", paddingHorizontal: 6, paddingVertical: 1 }}>
+                    <Ionicons name="lock-closed" size={8} color={Colors.gold} />
+                    <Text style={{ color: Colors.gold, fontFamily: Fonts.mono, fontSize: 9 }}>PRIVATE</Text>
+                  </View>
+                )}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginLeft: "auto" }}>
+                  <Ionicons name="eye-outline" size={12} color={Colors.textMuted} />
+                  <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 10 }}>{item.viewer_count}</Text>
+                </View>
               </View>
               <Text style={{ color: Colors.text, fontSize: 16, fontWeight: "600", marginBottom: 4 }}>{item.title}</Text>
               <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 11 }}>@{item.host_display_name || item.host_username}</Text>

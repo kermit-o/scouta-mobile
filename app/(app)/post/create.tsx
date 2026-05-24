@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Image, Alert } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Image } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { Colors, Fonts, API_BASE } from "@/lib/constants";
 import { getToken } from "@/lib/auth";
-import { BackButton } from "@/components/ui";
+import { BackButton, Button, Field } from "@/components/ui";
 
 export default function CreatePostScreen() {
   const router = useRouter();
@@ -91,14 +92,10 @@ export default function CreatePostScreen() {
 
       {error ? <Text style={{ color: Colors.red, fontFamily: Fonts.mono, fontSize: 12, marginBottom: 12 }}>{error}</Text> : null}
 
-      <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 1, marginBottom: 4 }}>TITLE *</Text>
-      <TextInput value={title} onChangeText={setTitle} placeholder="Post title" placeholderTextColor={Colors.textMuted}
-        style={{ backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder, color: Colors.text, padding: 14, fontSize: 16, marginBottom: 16 }} />
+      <Field label="TITLE *" value={title} onChangeText={setTitle} placeholder="Post title" style={{ fontSize: 16 }} />
 
-      <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 1, marginBottom: 4 }}>BODY</Text>
-      <TextInput value={body} onChangeText={setBody} placeholder="Write your post..." placeholderTextColor={Colors.textMuted}
-        multiline numberOfLines={8} textAlignVertical="top"
-        style={{ backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder, color: Colors.text, padding: 14, fontSize: 14, marginBottom: 16, minHeight: 160 }} />
+      <Field label="BODY" value={body} onChangeText={setBody} placeholder="Write your post..."
+        multiline numberOfLines={8} textAlignVertical="top" style={{ fontSize: 14, minHeight: 160 }} />
 
       <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 1, marginBottom: 8 }}>MEDIA (optional)</Text>
       {mediaUri ? (
@@ -107,22 +104,20 @@ export default function CreatePostScreen() {
           {uploading && <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center" }}>
             <ActivityIndicator color={Colors.green} /><Text style={{ color: "#fff", fontFamily: Fonts.mono, fontSize: 11, marginTop: 8 }}>Uploading...</Text>
           </View>}
-          <TouchableOpacity onPress={function() { setMediaUri(null); setMediaUrl(null); setMediaType(null); }} style={{ marginTop: 8 }}>
+          <TouchableOpacity onPress={function() { setMediaUri(null); setMediaUrl(null); setMediaType(null); }} style={{ marginTop: 8, flexDirection: "row", alignItems: "center", gap: 5 }}>
+            <Ionicons name="trash-outline" size={13} color={Colors.red} />
             <Text style={{ color: Colors.red, fontFamily: Fonts.mono, fontSize: 11 }}>Remove media</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <TouchableOpacity onPress={pickMedia}
-          style={{ backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, borderStyle: "dashed", padding: 24, alignItems: "center", marginBottom: 16 }}>
-          <Text style={{ fontSize: 24, marginBottom: 4 }}>📷</Text>
+          style={{ backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, borderStyle: "dashed", padding: 24, alignItems: "center", marginBottom: 16, gap: 8 }}>
+          <Ionicons name="image-outline" size={28} color={Colors.textMuted} />
           <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 12 }}>Attach image or video</Text>
         </TouchableOpacity>
       )}
 
-      <TouchableOpacity onPress={handlePublish} disabled={publishing || !title.trim() || uploading}
-        style={{ backgroundColor: Colors.green, padding: 16, alignItems: "center", opacity: publishing || !title.trim() || uploading ? 0.5 : 1 }}>
-        {publishing ? <ActivityIndicator color="#fff" /> : <Text style={{ color: "#fff", fontFamily: Fonts.mono, fontSize: 13, letterSpacing: 1 }}>PUBLISH</Text>}
-      </TouchableOpacity>
+      <Button label="PUBLISH" onPress={handlePublish} loading={publishing} disabled={!title.trim() || uploading} icon="send" />
     </ScrollView>
   );
 }

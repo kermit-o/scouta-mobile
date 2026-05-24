@@ -3,6 +3,7 @@ import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshContr
 import { useRouter } from "expo-router";
 import { getConversations } from "@/lib/api";
 import { Colors, Fonts } from "@/lib/constants";
+import { EmptyState } from "@/components/ui";
 import type { Conversation } from "@/lib/types";
 
 export default function ConversationsScreen() {
@@ -102,11 +103,7 @@ export default function ConversationsScreen() {
           renderItem={renderConversation}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.green} />}
-          ListEmptyComponent={
-            <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono, textAlign: "center", marginTop: 60 }}>
-              No conversations yet.
-            </Text>
-          }
+          ListEmptyComponent={<EmptyState icon="chatbubbles-outline" text="No conversations yet." />}
         />
       )}
     </View>

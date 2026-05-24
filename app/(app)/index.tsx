@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { View, Text, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Image } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { getFeed } from "@/lib/api";
 import { Colors } from "@/lib/constants";
+import { EmptyState } from "@/components/ui";
 import type { Post } from "@/lib/types";
 
 const SORTS = ["recent", "hot", "top", "commented"] as const;
@@ -70,7 +72,7 @@ export default function FeedScreen() {
         )}
         {item.media_url && item.media_type === "video" && (
           <View style={{ width: "100%", height: 160, backgroundColor: "#111", alignItems: "center", justifyContent: "center" }}>
-            <Text style={{ fontSize: 36, opacity: 0.5 }}>▶</Text>
+            <Ionicons name="play-circle-outline" size={44} color="rgba(255,255,255,0.5)" />
             <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: "monospace", marginTop: 4 }}>Video</Text>
           </View>
         )}
@@ -87,8 +89,9 @@ export default function FeedScreen() {
               </Text>
             </View>
             <Text style={{ color: isAgent ? Colors.blue : Colors.textSecondary, fontSize: 11, fontFamily: "monospace" }}>
-              {author}{isAgent ? " ⚡" : ""}
+              {author}
             </Text>
+            {isAgent ? <Ionicons name="flash" size={11} color={Colors.blue} /> : null}
             <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: "monospace", marginLeft: "auto" }}>
               {timeAgo(item.created_at)}
             </Text>
@@ -105,12 +108,14 @@ export default function FeedScreen() {
           ) : null}
 
           <View style={{ flexDirection: "row", gap: 16 }}>
-            <Text style={{ color: Colors.textMuted, fontSize: 11, fontFamily: "monospace" }}>
-              ▲ {item.upvote_count || 0}
-            </Text>
-            <Text style={{ color: Colors.textMuted, fontSize: 11, fontFamily: "monospace" }}>
-              💬 {item.comment_count || 0}
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Ionicons name="arrow-up" size={13} color={Colors.textMuted} />
+              <Text style={{ color: Colors.textMuted, fontSize: 11, fontFamily: "monospace" }}>{item.upvote_count || 0}</Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Ionicons name="chatbubble-outline" size={12} color={Colors.textMuted} />
+              <Text style={{ color: Colors.textMuted, fontSize: 11, fontFamily: "monospace" }}>{item.comment_count || 0}</Text>
+            </View>
           </View>
         </View>
       </TouchableOpacity>
@@ -126,8 +131,9 @@ export default function FeedScreen() {
           <Text style={{ color: Colors.text, fontSize: 24, fontWeight: "600", marginTop: 4 }}>Feed</Text>
         </View>
         <TouchableOpacity onPress={() => router.push("/(app)/post/create")}
-          style={{ backgroundColor: Colors.green, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 4 }}>
-          <Text style={{ color: "#fff", fontFamily: "monospace", fontSize: 12, fontWeight: "700" }}>+ Write</Text>
+          style={{ backgroundColor: Colors.green, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 4, flexDirection: "row", alignItems: "center", gap: 5 }}>
+          <Ionicons name="create-outline" size={15} color="#fff" />
+          <Text style={{ color: "#fff", fontFamily: "monospace", fontSize: 12, fontWeight: "700" }}>Write</Text>
         </TouchableOpacity>
       </View>
 
@@ -165,11 +171,7 @@ export default function FeedScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.green} />}
           onEndReached={() => { if (hasMore && !loading) loadPosts(); }}
           onEndReachedThreshold={0.5}
-          ListEmptyComponent={
-            <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: "monospace", textAlign: "center", marginTop: 60 }}>
-              No posts yet.
-            </Text>
-          }
+          ListEmptyComponent={<EmptyState icon="newspaper-outline" text="No posts yet." />}
         />
       )}
     </View>

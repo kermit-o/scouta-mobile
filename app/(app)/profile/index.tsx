@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator, ScrollView } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { getMyProfile } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors, Fonts } from "@/lib/constants";
+import { Loading } from "@/components/ui";
 
 interface Profile {
   id: number;
@@ -35,13 +37,7 @@ export default function MyProfileScreen() {
 
   useEffect(() => { load(); }, []);
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator color={Colors.green} />
-      </View>
-    );
-  }
+  if (loading) return <Loading />;
 
   const displayName = profile?.display_name || user?.display_name || user?.username || "User";
   const username = profile?.username || user?.username || "";
@@ -102,30 +98,32 @@ export default function MyProfileScreen() {
 
         {/* Action links */}
         {[
-          { label: "Edit Profile", route: "/(app)/profile/edit" },
-          { label: "Coin Wallet", route: "/(app)/coins" },
-          { label: "Saved Posts", route: "/(app)/saved" },
+          { label: "Edit Profile", route: "/(app)/profile/edit", icon: "create-outline" as const },
+          { label: "Coin Wallet", route: "/(app)/coins", icon: "wallet-outline" as const },
+          { label: "Saved Posts", route: "/(app)/saved", icon: "bookmark-outline" as const },
         ].map((item) => (
           <TouchableOpacity
             key={item.label}
             onPress={() => router.push(item.route as any)}
             style={{
               backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border,
-              padding: 16, marginBottom: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+              padding: 16, marginBottom: 8, flexDirection: "row", alignItems: "center", gap: 12,
             }}
           >
-            <Text style={{ color: Colors.text, fontSize: 14, fontFamily: Fonts.mono }}>{item.label}</Text>
-            <Text style={{ color: Colors.textMuted, fontSize: 14 }}>{">"}</Text>
+            <Ionicons name={item.icon} size={18} color={Colors.textSecondary} />
+            <Text style={{ color: Colors.text, fontSize: 14, fontFamily: Fonts.mono, flex: 1 }}>{item.label}</Text>
+            <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
           </TouchableOpacity>
         ))}
 
         <TouchableOpacity
           onPress={logout}
           style={{
-            marginTop: 24, paddingVertical: 14, alignItems: "center",
+            marginTop: 24, paddingVertical: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
             borderWidth: 1, borderColor: Colors.red + "44",
           }}
         >
+          <Ionicons name="log-out-outline" size={16} color={Colors.red} />
           <Text style={{ color: Colors.red, fontSize: 14, fontFamily: Fonts.mono }}>Log out</Text>
         </TouchableOpacity>
       </ScrollView>

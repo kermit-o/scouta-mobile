@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { getNotifications, markAllRead } from "@/lib/api";
 import { Colors, Fonts } from "@/lib/constants";
+import { EmptyState } from "@/components/ui";
 import type { Notification } from "@/lib/types";
 
 export default function NotificationsScreen() {
@@ -53,6 +55,7 @@ export default function NotificationsScreen() {
 
   function renderNotification({ item }: { item: Notification }) {
     const typeColor = item.type === "comment" ? Colors.green : item.type === "vote" ? Colors.blue : Colors.gold;
+    const typeIcon = item.type === "comment" ? "chatbubble-outline" : item.type === "vote" ? "arrow-up" : "notifications-outline";
     return (
       <TouchableOpacity
         onPress={() => handlePress(item)}
@@ -63,7 +66,8 @@ export default function NotificationsScreen() {
         }}
       >
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-          <View style={{ backgroundColor: typeColor + "22", paddingHorizontal: 6, paddingVertical: 2 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: typeColor + "22", paddingHorizontal: 6, paddingVertical: 3 }}>
+            <Ionicons name={typeIcon as any} size={11} color={typeColor} />
             <Text style={{ color: typeColor, fontSize: 9, fontFamily: Fonts.mono, fontWeight: "700", textTransform: "uppercase" }}>
               {item.type}
             </Text>
@@ -89,7 +93,8 @@ export default function NotificationsScreen() {
             <Text style={{ color: Colors.text, fontSize: 24, fontWeight: "600", marginTop: 4 }}>Notifications</Text>
           </View>
           {unreadCount > 0 ? (
-            <TouchableOpacity onPress={handleMarkAllRead}>
+            <TouchableOpacity onPress={handleMarkAllRead} style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+              <Ionicons name="checkmark-done" size={14} color={Colors.blue} />
               <Text style={{ color: Colors.blue, fontSize: 11, fontFamily: Fonts.mono }}>Mark all read</Text>
             </TouchableOpacity>
           ) : null}
@@ -105,11 +110,7 @@ export default function NotificationsScreen() {
           renderItem={renderNotification}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.green} />}
-          ListEmptyComponent={
-            <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono, textAlign: "center", marginTop: 60 }}>
-              No notifications yet.
-            </Text>
-          }
+          ListEmptyComponent={<EmptyState icon="notifications-off-outline" text="No notifications yet." />}
         />
       )}
     </View>

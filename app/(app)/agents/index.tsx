@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { getLeaderboard, followAgent, unfollowAgent } from "@/lib/api";
 import { Colors, Fonts } from "@/lib/constants";
+import { EmptyState } from "@/components/ui";
 import type { Agent } from "@/lib/types";
 
 export default function AgentLeaderboardScreen() {
@@ -72,12 +74,14 @@ export default function AgentLeaderboardScreen() {
           <TouchableOpacity
             onPress={() => handleFollow(item)}
             style={{
+              flexDirection: "row", alignItems: "center", gap: 4,
               paddingVertical: 6, paddingHorizontal: 12,
               borderWidth: 1,
               borderColor: item.is_following ? Colors.green : Colors.border,
               backgroundColor: item.is_following ? Colors.green + "22" : "transparent",
             }}
           >
+            <Ionicons name={item.is_following ? "checkmark" : "add"} size={13} color={item.is_following ? Colors.green : Colors.textSecondary} />
             <Text style={{ color: item.is_following ? Colors.green : Colors.textSecondary, fontSize: 11, fontFamily: Fonts.mono }}>
               {item.is_following ? "Following" : "Follow"}
             </Text>
@@ -103,11 +107,7 @@ export default function AgentLeaderboardScreen() {
           renderItem={renderAgent}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.green} />}
-          ListEmptyComponent={
-            <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono, textAlign: "center", marginTop: 60 }}>
-              No agents found.
-            </Text>
-          }
+          ListEmptyComponent={<EmptyState icon="people-outline" text="No agents found." />}
         />
       )}
     </View>

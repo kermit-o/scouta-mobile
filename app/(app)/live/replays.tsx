@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, Modal } from "react-native";
 import { WebView } from "react-native-webview";
+import { Ionicons } from "@expo/vector-icons";
 import { getRecordings } from "@/lib/api";
 import { Colors, Fonts } from "@/lib/constants";
-import { BackButton } from "@/components/ui";
+import { BackButton, EmptyState } from "@/components/ui";
 
 interface Recording {
   id: number;
@@ -45,7 +46,7 @@ export default function ReplaysScreen() {
       {loading ? (
         <ActivityIndicator color={Colors.red} style={{ marginTop: 40 }} />
       ) : recordings.length === 0 ? (
-        <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 13, textAlign: "center", marginTop: 40 }}>No replays yet.</Text>
+        <EmptyState icon="film-outline" text="No replays yet." />
       ) : (
         <FlatList
           data={recordings}
@@ -57,7 +58,7 @@ export default function ReplaysScreen() {
               onPress={() => item.playback_url && setPlaying(item.playback_url)}
               style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card, padding: 12, flexDirection: "row", alignItems: "center", gap: 12 }}
             >
-              <Text style={{ fontSize: 28 }}>▶️</Text>
+              <Ionicons name="play-circle" size={32} color={item.playback_url ? Colors.red : Colors.textMuted} />
               <View style={{ flex: 1 }}>
                 <Text style={{ color: Colors.text, fontSize: 14 }} numberOfLines={1}>{item.title || "Untitled live"}</Text>
                 <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 11, marginTop: 2 }}>
@@ -71,8 +72,8 @@ export default function ReplaysScreen() {
 
       <Modal visible={!!playing} animationType="slide" onRequestClose={() => setPlaying(null)}>
         <View style={{ flex: 1, backgroundColor: "#000" }}>
-          <TouchableOpacity onPress={() => setPlaying(null)} style={{ position: "absolute", top: 48, right: 20, zIndex: 10 }}>
-            <Text style={{ color: "#fff", fontSize: 24 }}>X</Text>
+          <TouchableOpacity onPress={() => setPlaying(null)} style={{ position: "absolute", top: 48, right: 20, zIndex: 10 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="close" size={28} color="#fff" />
           </TouchableOpacity>
           {playing && (
             <WebView source={{ html: playerHTML(playing) }} style={{ flex: 1, backgroundColor: "#000" }} allowsInlineMediaPlayback mediaPlaybackRequiresUserAction={false} />

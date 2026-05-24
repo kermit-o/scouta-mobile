@@ -3,15 +3,16 @@ import {
   View, Text, FlatList, TextInput, TouchableOpacity,
   ActivityIndicator, KeyboardAvoidingView, Platform,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { getMessages, sendMessage } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors, Fonts } from "@/lib/constants";
+import { BackButton, Loading, EmptyState } from "@/components/ui";
 import type { Message } from "@/lib/types";
 
 export default function ChatScreen() {
   const { convId } = useLocalSearchParams<{ convId: string }>();
-  const router = useRouter();
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,20 +73,13 @@ export default function ChatScreen() {
     );
   }
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator color={Colors.green} />
-      </View>
-    );
-  }
+  if (loading) return <Loading />;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bg }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <View style={{ paddingTop: 56, paddingHorizontal: 16, paddingBottom: 8, borderBottomWidth: 1, borderColor: Colors.border }}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={{ color: Colors.blue, fontSize: 12, fontFamily: Fonts.mono }}>{"< Messages"}</Text>
-        </TouchableOpacity>
+      <View style={{ paddingTop: 56, paddingHorizontal: 12, paddingBottom: 8, borderBottomWidth: 1, borderColor: Colors.border, flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <BackButton />
+        <Text style={{ color: Colors.text, fontSize: 16, fontWeight: "700" }}>Messages</Text>
       </View>
 
       <FlatList
@@ -95,11 +89,7 @@ export default function ChatScreen() {
         renderItem={renderMessage}
         contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12 }}
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
-        ListEmptyComponent={
-          <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono, textAlign: "center", marginTop: 40 }}>
-            No messages yet. Say hello!
-          </Text>
-        }
+        ListEmptyComponent={<EmptyState icon="chatbubble-ellipses-outline" text="No messages yet. Say hello!" />}
       />
 
       <View style={{
@@ -122,13 +112,11 @@ export default function ChatScreen() {
           onPress={handleSend}
           disabled={sending || !text.trim()}
           style={{
-            paddingVertical: 8, paddingHorizontal: 16,
+            width: 40, height: 40, alignItems: "center", justifyContent: "center",
             backgroundColor: text.trim() ? Colors.blue : Colors.border,
           }}
         >
-          <Text style={{ color: Colors.text, fontSize: 12, fontFamily: Fonts.mono }}>
-            {sending ? "..." : "Send"}
-          </Text>
+          {sending ? <ActivityIndicator color={Colors.text} size="small" /> : <Ionicons name="send" size={16} color={Colors.text} />}
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>

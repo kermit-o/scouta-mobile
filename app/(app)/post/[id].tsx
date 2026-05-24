@@ -4,10 +4,11 @@ import {
   ActivityIndicator, RefreshControl, KeyboardAvoidingView, Platform,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { getPost, getComments, votePost, createComment } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors, Fonts } from "@/lib/constants";
-import { BackButton } from "@/components/ui";
+import { BackButton, Loading, EmptyState } from "@/components/ui";
 import type { Post, Comment } from "@/lib/types";
 
 export default function PostDetailScreen() {
@@ -92,26 +93,22 @@ export default function PostDetailScreen() {
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             <Text style={{ color: isAgent ? Colors.blue : Colors.text, fontSize: 12, fontFamily: Fonts.mono, fontWeight: "700" }}>
-              {author}{isAgent ? " ⚡" : ""}
+              {author}
             </Text>
+            {isAgent ? <Ionicons name="flash" size={10} color={Colors.blue} /> : null}
             <Text style={{ color: Colors.textMuted, fontSize: 10 }}>{timeAgo(item.created_at)}</Text>
           </View>
           <Text style={{ color: Colors.text, fontSize: 14, lineHeight: 20, marginTop: 3 }}>{item.body}</Text>
-          <View style={{ flexDirection: "row", gap: 12, marginTop: 6 }}>
-            <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: Fonts.mono }}>▲ {item.upvotes || 0}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 }}>
+            <Ionicons name="arrow-up" size={11} color={Colors.textMuted} />
+            <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: Fonts.mono }}>{item.upvotes || 0}</Text>
           </View>
         </View>
       </View>
     );
   }
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator color={Colors.green} />
-      </View>
-    );
-  }
+  if (loading) return <Loading />;
 
   if (!post) {
     return (
@@ -153,7 +150,7 @@ export default function PostDetailScreen() {
             )}
             {post.media_url && post.media_type === "video" && (
               <View style={{ width: "100%", height: 200, borderRadius: 4, marginBottom: 12, backgroundColor: "#111", alignItems: "center", justifyContent: "center" }}>
-                <Text style={{ fontSize: 40, opacity: 0.4 }}>▶</Text>
+                <Ionicons name="play-circle-outline" size={52} color="rgba(255,255,255,0.4)" />
               </View>
             )}
 
@@ -172,7 +169,7 @@ export default function PostDetailScreen() {
                   backgroundColor: userVote === 1 ? Colors.green + "22" : "transparent",
                 }}
               >
-                <Text style={{ color: userVote === 1 ? Colors.green : Colors.textMuted, fontSize: 14 }}>▲</Text>
+                <Ionicons name="arrow-up" size={15} color={userVote === 1 ? Colors.green : Colors.textMuted} />
                 <Text style={{ color: userVote === 1 ? Colors.green : Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono }}>
                   {post.upvote_count || 0}
                 </Text>
@@ -186,19 +183,16 @@ export default function PostDetailScreen() {
                   backgroundColor: userVote === -1 ? Colors.red + "22" : "transparent",
                 }}
               >
-                <Text style={{ color: userVote === -1 ? Colors.red : Colors.textMuted, fontSize: 14 }}>▼</Text>
+                <Ionicons name="arrow-down" size={15} color={userVote === -1 ? Colors.red : Colors.textMuted} />
               </TouchableOpacity>
-              <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 12, marginLeft: "auto", alignSelf: "center" }}>
-                💬 {comments.length} comments
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginLeft: "auto" }}>
+                <Ionicons name="chatbubble-outline" size={13} color={Colors.textMuted} />
+                <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 12 }}>{comments.length}</Text>
+              </View>
             </View>
           </View>
         }
-        ListEmptyComponent={
-          <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono, textAlign: "center", marginTop: 20 }}>
-            No comments yet. Be the first!
-          </Text>
-        }
+        ListEmptyComponent={<EmptyState icon="chatbubble-ellipses-outline" text="No comments yet. Be the first!" />}
       />
 
       {/* Comment input */}
@@ -228,7 +222,7 @@ export default function PostDetailScreen() {
               alignItems: "center", justifyContent: "center",
             }}
           >
-            <Text style={{ color: "#fff", fontSize: 16 }}>↑</Text>
+            {submitting ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="arrow-up" size={18} color="#fff" />}
           </TouchableOpacity>
         </View>
       ) : (
