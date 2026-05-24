@@ -1,42 +1,34 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Alert, Animated, Easing } from "react-native";
-import { WebView } from "react-native-webview";
+import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Alert, Animated, Easing, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { LiveKitRoom, AudioSession, VideoTrack, useTracks, useLocalParticipant, useConnectionState, isTrackReference } from "@livekit/react-native";
+import { Track, ConnectionState, VideoPresets, type LocalVideoTrack, type RoomOptions } from "livekit-client";
+import { Ionicons } from "@expo/vector-icons";
 import { joinStream, getGiftCatalog, sendGift, sendReaction } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
-import { Colors, Fonts } from "@/lib/constants";
+import { Colors, Fonts, LIVEKIT_URL } from "@/lib/constants";
 
 const API = "https://api.scouta.co/api/v1";
-const LIVEKIT_URL = "wss://scouta-pi70lg8z.livekit.cloud";
 
 interface ChatMsg { username?: string; display_name?: string; message: string; is_agent?: boolean; }
 interface GiftItem { id: number; name: string; emoji: string; coin_cost: number; }
 
-function getLiveKitHTML(token: string, url: string, isHost: boolean) {
-  return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#000;overflow:hidden}video{width:100%;height:100%;object-fit:contain}#container{width:100vw;height:100vh;display:flex;align-items:center;justify-content:center}#status{color:#888;font-family:monospace;font-size:14px;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}</style>
-<script src="https://unpkg.com/livekit-client@2.9.1/dist/livekit-client.umd.js"></script></head><body>
-<div id="container"><div id="status">Connecting...</div></div>
-<script>
-(async()=>{try{
-const room=new LivekitClient.Room();
-room.on(LivekitClient.RoomEvent.TrackSubscribed,(track,pub,participant)=>{
-  if(track.kind==='video'){const el=track.attach();document.getElementById('container').innerHTML='';document.getElementById('container').appendChild(el);}
-  if(track.kind==='audio'){const el=track.attach();document.body.appendChild(el);}
-});
-room.on(LivekitClient.RoomEvent.Disconnected,()=>{document.getElementById('status')&&(document.getElementById('status').textContent='Stream ended');});
-await room.connect('${url}','${token}');
-document.getElementById('status').textContent='Connected';
-${isHost?`
-await room.localParticipant.setCameraEnabled(true);
-await room.localParticipant.setMicrophoneEnabled(true);
-const vt=room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Camera);
-if(vt&&vt.track){const el=vt.track.attach();document.getElementById('container').innerHTML='';document.getElementById('container').appendChild(el);}
-`:''}
-}catch(e){document.getElementById('status')&&(document.getElementById('status').textContent='Error: '+e.message);}})()
-</script></body></html>`;
-}
+// Simulcast + adaptive stream so the server can serve each viewer the layer
+// their connection can handle — keeps the stream solid on poor networks.
+const ROOM_OPTIONS: RoomOptions = {
+  adaptiveStream: { pixelDensity: "screen" },
+  dynacast: true,
+  publishDefaults: {
+    simulcast: true,
+    videoSimulcastLayers: [VideoPresets.h360, VideoPresets.h180],
+    red: true,
+    dtx: true,
+  },
+  videoCaptureDefaults: {
+    resolution: VideoPresets.h720.resolution,
+  },
+};
 
 // A single reaction emoji that floats up and fades, then calls onDone so the
 // parent can drop it from state. Pure RN Animated — no extra deps.
@@ -54,6 +46,80 @@ function FloatingHeart({ emoji, x, onDone }: { emoji: string; x: number; onDone:
   );
 }
 
+// Full-screen native video. For the host we show their own (local) camera; for
+// viewers we show the host's remote camera. Must live inside <LiveKitRoom>.
+function VideoStage({ isHost, facing }: { isHost: boolean; facing: "front" | "back" }) {
+  const tracks = useTracks([Track.Source.Camera]);
+  const connState = useConnectionState();
+  const refs = tracks.filter(isTrackReference);
+  const cam = refs.find((t) => (isHost ? t.participant.isLocal : !t.participant.isLocal)) || refs[0];
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      {cam ? (
+        <VideoTrack trackRef={cam} style={{ flex: 1 }} objectFit="cover" mirror={isHost && facing === "front"} />
+      ) : (
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#000" }}>
+          <ActivityIndicator color={Colors.red} size="large" />
+          <Text style={{ color: "rgba(255,255,255,0.4)", fontFamily: Fonts.mono, fontSize: 12, marginTop: 12 }}>
+            {connState === ConnectionState.Connecting ? "CONNECTING…" : isHost ? "STARTING CAMERA…" : "WAITING FOR HOST…"}
+          </Text>
+        </View>
+      )}
+      {connState === ConnectionState.Reconnecting && (
+        <View style={{ position: "absolute", top: 90, left: 0, right: 0, alignItems: "center" }}>
+          <View style={{ backgroundColor: "rgba(0,0,0,0.8)", flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 }}>
+            <ActivityIndicator color={Colors.gold} size="small" />
+            <Text style={{ color: Colors.gold, fontFamily: Fonts.mono, fontSize: 12 }}>Reconnecting…</Text>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const ctrlBtn = {
+  width: 48, height: 48, borderRadius: 24, backgroundColor: "rgba(0,0,0,0.55)",
+  alignItems: "center" as const, justifyContent: "center" as const,
+  borderWidth: 1, borderColor: "rgba(255,255,255,0.15)",
+};
+
+// Host-only camera/mic controls. Uses the local participant from room context,
+// so it must live inside <LiveKitRoom>.
+function HostControls({ facing, setFacing }: { facing: "front" | "back"; setFacing: (f: "front" | "back") => void }) {
+  const { localParticipant, isMicrophoneEnabled } = useLocalParticipant();
+  const [busy, setBusy] = useState(false);
+
+  const flip = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const pub = localParticipant.getTrackPublication(Track.Source.Camera);
+      const vt = pub?.videoTrack as LocalVideoTrack | undefined;
+      const next = facing === "front" ? "back" : "front";
+      if (vt) {
+        await vt.restartTrack({ facingMode: next === "front" ? "user" : "environment" });
+        setFacing(next);
+      }
+    } catch {}
+    setBusy(false);
+  }, [busy, facing, localParticipant, setFacing]);
+
+  const toggleMic = useCallback(async () => {
+    try { await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled); } catch {}
+  }, [isMicrophoneEnabled, localParticipant]);
+
+  return (
+    <View style={{ position: "absolute", right: 12, top: "32%", gap: 14, alignItems: "center" }}>
+      <TouchableOpacity onPress={flip} disabled={busy} style={ctrlBtn}>
+        <Ionicons name="camera-reverse" size={24} color="#fff" />
+      </TouchableOpacity>
+      <TouchableOpacity onPress={toggleMic} style={[ctrlBtn, !isMicrophoneEnabled && { backgroundColor: Colors.red }]}>
+        <Ionicons name={isMicrophoneEnabled ? "mic" : "mic-off"} size={24} color="#fff" />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 export default function LiveRoomScreen() {
   const { roomName } = useLocalSearchParams<{ roomName: string }>();
   const { user } = useAuth();
@@ -63,6 +129,7 @@ export default function LiveRoomScreen() {
   const [title, setTitle] = useState("");
   const [viewers, setViewers] = useState(0);
   const [isHost, setIsHost] = useState(false);
+  const [facing, setFacing] = useState<"front" | "back">("front");
   const [lkToken, setLkToken] = useState<string | null>(null);
   const [chat, setChat] = useState<ChatMsg[]>([]);
   const [msg, setMsg] = useState("");
@@ -78,6 +145,12 @@ export default function LiveRoomScreen() {
     const id = ++heartId.current;
     const x = 10 + Math.floor(Math.random() * 24);
     setHearts((prev) => [...prev.slice(-24), { id, emoji, x }]);
+  }, []);
+
+  // Native audio routing for the call. Start on enter, release on exit.
+  useEffect(() => {
+    AudioSession.startAudioSession().catch(() => {});
+    return () => { AudioSession.stopAudioSession().catch(() => {}); };
   }, []);
 
   useEffect(() => {
@@ -157,8 +230,8 @@ export default function LiveRoomScreen() {
 
   if (status === "ended" || status === "fail") return (
     <View style={{flex:1,backgroundColor:Colors.bg,alignItems:"center",justifyContent:"center",padding:24}}>
-      <Text style={{fontSize:48,marginBottom:16}}>{status==="ended"?"📡":"⚠️"}</Text>
-      <Text style={{color:Colors.text,fontSize:20,fontWeight:"700",marginBottom:8}}>{status==="ended"?"Stream Ended":"Cannot Join"}</Text>
+      <Ionicons name={status==="ended"?"radio-outline":"warning-outline"} size={56} color={status==="ended"?Colors.textMuted:Colors.red} />
+      <Text style={{color:Colors.text,fontSize:20,fontWeight:"700",marginTop:16,marginBottom:8}}>{status==="ended"?"Stream Ended":"Cannot Join"}</Text>
       <Text style={{color:Colors.textMuted,fontFamily:Fonts.mono,fontSize:12,marginBottom:24,textAlign:"center"}}>{error||"This stream has ended."}</Text>
       <TouchableOpacity onPress={function(){router.back();}} style={{borderWidth:1,borderColor:Colors.blue,paddingHorizontal:24,paddingVertical:12,borderRadius:8}}>
         <Text style={{color:Colors.blue,fontFamily:Fonts.mono}}>Back to Streams</Text>
@@ -174,40 +247,47 @@ export default function LiveRoomScreen() {
   );
 
   return (
-    <View style={{flex:1,backgroundColor:Colors.bg}}>
+    <View style={{flex:1,backgroundColor:"#000"}}>
+      {/* Native LiveKit video — full screen */}
+      {lkToken ? (
+        <LiveKitRoom
+          serverUrl={LIVEKIT_URL}
+          token={lkToken}
+          connect={true}
+          audio={isHost}
+          video={isHost ? { facingMode: "user" } : false}
+          options={ROOM_OPTIONS}
+          onError={function(e){ setError(e.message || "Stream error"); }}
+        >
+          <VideoStage isHost={isHost} facing={facing} />
+          {isHost && <HostControls facing={facing} setFacing={setFacing} />}
+        </LiveKitRoom>
+      ) : (
+        <View style={[StyleSheet.absoluteFill,{alignItems:"center",justifyContent:"center"}]}>
+          <Ionicons name="radio-outline" size={64} color="rgba(255,255,255,0.12)" />
+        </View>
+      )}
+
+      {/* Top scrim for header legibility */}
+      <View pointerEvents="none" style={{position:"absolute",top:0,left:0,right:0,height:110,backgroundColor:"rgba(0,0,0,0.45)"}} />
+
       {/* Header */}
-      <View style={{paddingTop:48,paddingHorizontal:12,paddingBottom:8,flexDirection:"row",alignItems:"center",backgroundColor:"#000"}}>
-        <TouchableOpacity onPress={function(){router.back();}} style={{padding:4}}>
-          <Text style={{color:"#fff",fontSize:22}}>X</Text>
+      <View style={{position:"absolute",top:0,left:0,right:0,paddingTop:48,paddingHorizontal:12,paddingBottom:8,flexDirection:"row",alignItems:"center"}}>
+        <TouchableOpacity onPress={function(){router.back();}} style={{padding:4}} hitSlop={{top:8,bottom:8,left:8,right:8}}>
+          <Ionicons name="close" size={26} color="#fff" />
         </TouchableOpacity>
         <View style={{flex:1,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:6}}>
           <View style={{width:8,height:8,borderRadius:4,backgroundColor:Colors.red}} />
           <Text style={{color:Colors.red,fontFamily:Fonts.mono,fontSize:12,fontWeight:"700"}}>LIVE</Text>
-          <Text style={{color:"rgba(255,255,255,0.5)",fontFamily:Fonts.mono,fontSize:11}}>{viewers} watching</Text>
+          <View style={{flexDirection:"row",alignItems:"center",gap:3}}>
+            <Ionicons name="eye-outline" size={13} color="rgba(255,255,255,0.6)" />
+            <Text style={{color:"rgba(255,255,255,0.6)",fontFamily:Fonts.mono,fontSize:11}}>{viewers}</Text>
+          </View>
         </View>
         {isHost && (
-          <TouchableOpacity onPress={doEnd} style={{backgroundColor:Colors.red,paddingHorizontal:12,paddingVertical:6,borderRadius:4}}>
+          <TouchableOpacity onPress={doEnd} style={{backgroundColor:Colors.red,paddingHorizontal:12,paddingVertical:6,borderRadius:6}}>
             <Text style={{color:"#fff",fontFamily:Fonts.mono,fontSize:11,fontWeight:"700"}}>END</Text>
           </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Video via WebView */}
-      <View style={{height:"35%",backgroundColor:"#000"}}>
-        {lkToken ? (
-          <WebView
-            source={{html: getLiveKitHTML(lkToken, LIVEKIT_URL, isHost)}}
-            style={{flex:1,backgroundColor:"#000"}}
-            javaScriptEnabled={true}
-            mediaPlaybackRequiresUserAction={false}
-            allowsInlineMediaPlayback={true}
-            mediaCapturePermissionGrantType="grant"
-          />
-        ) : (
-          <View style={{flex:1,alignItems:"center",justifyContent:"center"}}>
-            <Text style={{color:"rgba(255,255,255,0.15)",fontSize:60}}>📡</Text>
-            <Text style={{color:"rgba(255,255,255,0.4)",fontFamily:Fonts.mono,fontSize:12,marginTop:8}}>{title}</Text>
-          </View>
         )}
       </View>
 
@@ -224,61 +304,62 @@ export default function LiveRoomScreen() {
         </View>
       )}
 
-      {/* Chat */}
-      <View style={{flex:1}}>
+      {/* Chat overlay */}
+      <View style={{position:"absolute",left:0,right:70,bottom:64,maxHeight:"42%"}}>
         <FlatList ref={chatListRef} data={chat} keyExtractor={function(_,i){return String(i);}}
+          showsVerticalScrollIndicator={false}
           onContentSizeChange={function(){chatListRef.current?.scrollToEnd({animated:false});}}
           contentContainerStyle={{paddingHorizontal:12,paddingVertical:8}}
           renderItem={function({item}){return (
-            <View style={{flexDirection:"row",gap:6,paddingVertical:4}}>
+            <View style={{flexDirection:"row",alignSelf:"flex-start",backgroundColor:"rgba(0,0,0,0.5)",borderRadius:14,paddingHorizontal:10,paddingVertical:5,marginVertical:3,gap:6,alignItems:"baseline"}}>
               <Text style={{color:item.is_agent?Colors.blue:Colors.green,fontFamily:Fonts.mono,fontSize:12,fontWeight:"700"}}>{item.display_name||item.username}{item.is_agent?" ⚡":""}</Text>
-              <Text style={{color:Colors.text,fontSize:14,flex:1}}>{item.message}</Text>
+              <Text style={{color:"#fff",fontSize:14,flexShrink:1}}>{item.message}</Text>
             </View>
           );}} />
       </View>
 
-      {/* Gift picker */}
-      {showGifts && (
-        <View style={{backgroundColor:Colors.card,borderTopWidth:1,borderTopColor:Colors.border,padding:12}}>
-          <View style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <Text style={{color:Colors.text,fontWeight:"600",fontSize:14}}>Send a Gift</Text>
-            <TouchableOpacity onPress={function(){setShowGifts(false);}}><Text style={{color:Colors.textMuted,fontSize:20}}>X</Text></TouchableOpacity>
-          </View>
-          <View style={{flexDirection:"row",flexWrap:"wrap",gap:8}}>
-            {gifts.map(function(g){return (
-              <TouchableOpacity key={g.id} onPress={function(){doGift(g);}}
-                style={{backgroundColor:Colors.bg,borderWidth:1,borderColor:Colors.border,borderRadius:12,paddingVertical:12,paddingHorizontal:8,alignItems:"center",width:"30%"}}>
-                <Text style={{fontSize:28}}>{g.emoji}</Text>
-                <Text style={{color:Colors.text,fontSize:11,marginTop:4}}>{g.name}</Text>
-                <Text style={{color:Colors.gold,fontFamily:Fonts.mono,fontSize:10}}>🪙 {g.coin_cost}</Text>
-              </TouchableOpacity>
-            );})}
-          </View>
-        </View>
-      )}
-
       {/* Floating reactions */}
-      <View pointerEvents="none" style={{position:"absolute",right:8,bottom:70,width:60,height:240,zIndex:60}}>
+      <View pointerEvents="none" style={{position:"absolute",right:8,bottom:80,width:60,height:240,zIndex:60}}>
         {hearts.map(function(h){return (
           <FloatingHeart key={h.id} emoji={h.emoji} x={h.x} onDone={function(){setHearts(function(p){return p.filter(function(z){return z.id!==h.id;});});}} />
         );})}
       </View>
 
-      {/* Input */}
-      <View style={{flexDirection:"row",paddingHorizontal:8,paddingVertical:8,gap:8,borderTopWidth:1,borderTopColor:Colors.border,backgroundColor:Colors.bg}}>
-        <TouchableOpacity onPress={function(){setShowGifts(!showGifts);}} style={{width:42,height:42,borderRadius:21,backgroundColor:showGifts?Colors.gold+"44":Colors.card,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:showGifts?Colors.gold:Colors.border}}>
-          <Text style={{fontSize:20}}>🎁</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={react} style={{width:42,height:42,borderRadius:21,backgroundColor:Colors.card,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:Colors.border}}>
-          <Text style={{fontSize:20}}>❤️</Text>
-        </TouchableOpacity>
-        <TextInput value={msg} onChangeText={setMsg} onSubmitEditing={send} placeholder="Say something..." placeholderTextColor={Colors.textMuted}
-          style={{flex:1,backgroundColor:Colors.inputBg,borderWidth:1,borderColor:Colors.inputBorder,color:Colors.text,paddingHorizontal:14,paddingVertical:10,borderRadius:24,fontSize:14}} />
-        <TouchableOpacity onPress={send} disabled={!msg.trim()}
-          style={{width:42,height:42,borderRadius:21,backgroundColor:msg.trim()?Colors.green:Colors.card,alignItems:"center",justifyContent:"center"}}>
-          <Text style={{color:"#fff",fontSize:18,fontWeight:"700"}}>↑</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Bottom bar (gift picker + input), rises with keyboard */}
+      <KeyboardAvoidingView behavior={Platform.OS==="ios"?"padding":undefined} style={{position:"absolute",left:0,right:0,bottom:0}}>
+        {showGifts && (
+          <View style={{backgroundColor:Colors.card,borderTopWidth:1,borderTopColor:Colors.border,padding:12}}>
+            <View style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <Text style={{color:Colors.text,fontWeight:"600",fontSize:14}}>Send a Gift</Text>
+              <TouchableOpacity onPress={function(){setShowGifts(false);}}><Ionicons name="close" size={22} color={Colors.textMuted} /></TouchableOpacity>
+            </View>
+            <View style={{flexDirection:"row",flexWrap:"wrap",gap:8}}>
+              {gifts.map(function(g){return (
+                <TouchableOpacity key={g.id} onPress={function(){doGift(g);}}
+                  style={{backgroundColor:Colors.bg,borderWidth:1,borderColor:Colors.border,borderRadius:12,paddingVertical:12,paddingHorizontal:8,alignItems:"center",width:"30%"}}>
+                  <Text style={{fontSize:28}}>{g.emoji}</Text>
+                  <Text style={{color:Colors.text,fontSize:11,marginTop:4}}>{g.name}</Text>
+                  <Text style={{color:Colors.gold,fontFamily:Fonts.mono,fontSize:10}}>🪙 {g.coin_cost}</Text>
+                </TouchableOpacity>
+              );})}
+            </View>
+          </View>
+        )}
+        <View style={{flexDirection:"row",paddingHorizontal:8,paddingVertical:8,gap:8,backgroundColor:"rgba(0,0,0,0.4)"}}>
+          <TouchableOpacity onPress={function(){setShowGifts(!showGifts);}} style={{width:42,height:42,borderRadius:21,backgroundColor:showGifts?Colors.gold+"44":"rgba(0,0,0,0.4)",alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:showGifts?Colors.gold:"rgba(255,255,255,0.15)"}}>
+            <Ionicons name="gift" size={20} color={showGifts?Colors.gold:"#fff"} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={react} style={{width:42,height:42,borderRadius:21,backgroundColor:"rgba(0,0,0,0.4)",alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:"rgba(255,255,255,0.15)"}}>
+            <Ionicons name="heart" size={20} color={Colors.red} />
+          </TouchableOpacity>
+          <TextInput value={msg} onChangeText={setMsg} onSubmitEditing={send} placeholder="Say something..." placeholderTextColor={Colors.textMuted}
+            style={{flex:1,backgroundColor:"rgba(0,0,0,0.5)",borderWidth:1,borderColor:"rgba(255,255,255,0.15)",color:"#fff",paddingHorizontal:14,paddingVertical:10,borderRadius:24,fontSize:14}} />
+          <TouchableOpacity onPress={send} disabled={!msg.trim()}
+            style={{width:42,height:42,borderRadius:21,backgroundColor:msg.trim()?Colors.green:"rgba(0,0,0,0.4)",alignItems:"center",justifyContent:"center"}}>
+            <Ionicons name="arrow-up" size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }

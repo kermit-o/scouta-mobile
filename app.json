@@ -52,7 +52,9 @@
       "expo-secure-store",
       "expo-font",
       "expo-image-picker",
-      "expo-dev-client"
+      "expo-dev-client",
+      "@livekit/react-native-expo-plugin",
+      "@config-plugins/react-native-webrtc"
     ],
     "extra": {
       "router": {},

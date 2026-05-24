@@ -2,6 +2,9 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { View } from "react-native";
+import { registerGlobals } from "@livekit/react-native";
+
+registerGlobals();
 
 export default function RootLayout() {
   return (
