@@ -12,6 +12,7 @@ export default function GoLiveScreen() {
   const [accessType, setAccessType] = useState("password");
   const [password, setPassword] = useState("");
   const [entryCost, setEntryCost] = useState("");
+  const [record, setRecord] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -20,7 +21,7 @@ export default function GoLiveScreen() {
     setLoading(true); setError("");
     try {
       const token = await getToken();
-      const body: any = { title: title.trim(), description: description.trim() };
+      const body: any = { title: title.trim(), description: description.trim(), record };
       if (isPrivate) {
         body.is_private = true; body.access_type = accessType;
         if (accessType === "password") body.password = password;
@@ -54,6 +55,10 @@ export default function GoLiveScreen() {
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16, padding: 12, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border }}>
         <Switch value={isPrivate} onValueChange={setIsPrivate} trackColor={{ true: Colors.gold }} />
         <Text style={{ color: Colors.text, fontFamily: Fonts.mono, fontSize: 13 }}>Private Room</Text>
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16, padding: 12, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border }}>
+        <Switch value={record} onValueChange={setRecord} trackColor={{ true: Colors.red }} />
+        <Text style={{ color: Colors.text, fontFamily: Fonts.mono, fontSize: 13 }}>Record (save replay)</Text>
       </View>
       {isPrivate && (
         <View style={{ marginBottom: 16 }}>

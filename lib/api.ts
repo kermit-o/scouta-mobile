@@ -227,6 +227,20 @@ export async function getTopGifters(roomName: string) {
   return res.json();
 }
 
+export async function sendReaction(roomName: string, emoji: string = "❤️") {
+  const res = await apiFetch(`/live/${roomName}/react`, {
+    method: "POST",
+    body: JSON.stringify({ emoji }),
+  });
+  return res.json();
+}
+
+export async function getRecordings(userId?: number) {
+  const q = userId ? `?user_id=${userId}` : "";
+  const res = await apiFetch(`/live/recordings${q}`);
+  return res.json();
+}
+
 // ── Coins ─────────────────────────────────────────────────────────────────────
 export async function getCoinBalance() {
   const res = await apiFetch("/coins/balance");

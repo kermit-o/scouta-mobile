@@ -1,8 +1,8 @@
-import { useEffect, useState, useRef } from "react";
-import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Alert } from "react-native";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Alert, Animated, Easing } from "react-native";
 import { WebView } from "react-native-webview";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { joinStream, getGiftCatalog, sendGift } from "@/lib/api";
+import { joinStream, getGiftCatalog, sendGift, sendReaction } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors, Fonts } from "@/lib/constants";
@@ -38,6 +38,22 @@ if(vt&&vt.track){const el=vt.track.attach();document.getElementById('container')
 </script></body></html>`;
 }
 
+// A single reaction emoji that floats up and fades, then calls onDone so the
+// parent can drop it from state. Pure RN Animated — no extra deps.
+function FloatingHeart({ emoji, x, onDone }: { emoji: string; x: number; onDone: () => void }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(anim, { toValue: 1, duration: 2200, easing: Easing.out(Easing.quad), useNativeDriver: true }).start(onDone);
+  }, []);
+  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [0, -220] });
+  const opacity = anim.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 1, 0] });
+  return (
+    <Animated.Text style={{ position: "absolute", bottom: 0, right: x, fontSize: 26, transform: [{ translateY }], opacity }}>
+      {emoji}
+    </Animated.Text>
+  );
+}
+
 export default function LiveRoomScreen() {
   const { roomName } = useLocalSearchParams<{ roomName: string }>();
   const { user } = useAuth();
@@ -53,8 +69,16 @@ export default function LiveRoomScreen() {
   const [showGifts, setShowGifts] = useState(false);
   const [gifts, setGifts] = useState<GiftItem[]>([]);
   const [giftAnim, setGiftAnim] = useState<{s:string;e:string;n:string}|null>(null);
+  const [hearts, setHearts] = useState<{id:number;emoji:string;x:number}[]>([]);
   const wsRef = useRef<WebSocket|null>(null);
   const chatListRef = useRef<FlatList>(null);
+  const heartId = useRef(0);
+
+  const showReaction = useCallback((emoji: string) => {
+    const id = ++heartId.current;
+    const x = 10 + Math.floor(Math.random() * 24);
+    setHearts((prev) => [...prev.slice(-24), { id, emoji, x }]);
+  }, []);
 
   useEffect(() => {
     var ws: WebSocket|null = null;
@@ -73,14 +97,18 @@ export default function LiveRoomScreen() {
           } catch {}
           // Chat history
           try { var ch = await fetch(API + "/live/" + roomName + "/chat?limit=50"); var cd = await ch.json(); if (cd.messages) setChat(cd.messages); } catch {}
-          // WebSocket
-          var wsUrl = API.replace("https://","wss://").replace("http://","ws://") + "/live/" + roomName + "/ws";
+          // WebSocket — pass the auth token so the server derives chat
+          // identity from it (anti-impersonation). Without it the connection
+          // is read-only and chat sends are rejected.
+          var tk = await getToken();
+          var wsUrl = API.replace("https://","wss://").replace("http://","ws://") + "/live/" + roomName + "/ws" + (tk ? "?token=" + encodeURIComponent(tk) : "");
           ws = new WebSocket(wsUrl); wsRef.current = ws;
           ws.onmessage = function(e) {
             try {
               var m = JSON.parse(e.data);
               if (m.type === "chat") setChat(function(p) { return p.concat(m).slice(-100); });
               else if (m.type === "gift") { setGiftAnim({s:m.sender,e:m.emoji,n:m.gift_name}); setTimeout(function(){setGiftAnim(null);}, 3000); }
+              else if (m.type === "reaction") showReaction(m.emoji || "❤️");
               else if (m.type === "stream_ended") setStatus("ended");
             } catch {}
           };
@@ -102,8 +130,14 @@ export default function LiveRoomScreen() {
 
   function send() {
     if (!msg.trim() || !wsRef.current) return;
-    wsRef.current.send(JSON.stringify({type:"chat",user_id:user?.id,username:user?.username,display_name:user?.display_name||user?.username,message:msg.trim()}));
+    // Identity is derived server-side from the token; only send the text.
+    wsRef.current.send(JSON.stringify({type:"chat",message:msg.trim()}));
     setMsg("");
+  }
+
+  async function react() {
+    showReaction("❤️");  // optimistic
+    try { await sendReaction(roomName as string, "❤️"); } catch {}
   }
 
   async function doGift(g: GiftItem) {
@@ -223,10 +257,20 @@ export default function LiveRoomScreen() {
         </View>
       )}
 
+      {/* Floating reactions */}
+      <View pointerEvents="none" style={{position:"absolute",right:8,bottom:70,width:60,height:240,zIndex:60}}>
+        {hearts.map(function(h){return (
+          <FloatingHeart key={h.id} emoji={h.emoji} x={h.x} onDone={function(){setHearts(function(p){return p.filter(function(z){return z.id!==h.id;});});}} />
+        );})}
+      </View>
+
       {/* Input */}
       <View style={{flexDirection:"row",paddingHorizontal:8,paddingVertical:8,gap:8,borderTopWidth:1,borderTopColor:Colors.border,backgroundColor:Colors.bg}}>
         <TouchableOpacity onPress={function(){setShowGifts(!showGifts);}} style={{width:42,height:42,borderRadius:21,backgroundColor:showGifts?Colors.gold+"44":Colors.card,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:showGifts?Colors.gold:Colors.border}}>
           <Text style={{fontSize:20}}>🎁</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={react} style={{width:42,height:42,borderRadius:21,backgroundColor:Colors.card,alignItems:"center",justifyContent:"center",borderWidth:1,borderColor:Colors.border}}>
+          <Text style={{fontSize:20}}>❤️</Text>
         </TouchableOpacity>
         <TextInput value={msg} onChangeText={setMsg} onSubmitEditing={send} placeholder="Say something..." placeholderTextColor={Colors.textMuted}
           style={{flex:1,backgroundColor:Colors.inputBg,borderWidth:1,borderColor:Colors.inputBorder,color:Colors.text,paddingHorizontal:14,paddingVertical:10,borderRadius:24,fontSize:14}} />

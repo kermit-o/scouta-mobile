@@ -27,13 +27,19 @@ export default function LiveListScreen() {
           <Text style={{ color: Colors.red, fontSize: 9, fontFamily: Fonts.mono, letterSpacing: 3 }}>LIVE</Text>
           <Text style={{ color: Colors.text, fontSize: 24, fontWeight: "600", marginTop: 4 }}>Streams</Text>
         </View>
-        {token && (
-          <TouchableOpacity onPress={() => router.push("/(app)/live/start")}
-            style={{ backgroundColor: Colors.red, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 4, flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#fff" }} />
-            <Text style={{ color: "#fff", fontFamily: Fonts.mono, fontSize: 12, fontWeight: "700" }}>Go Live</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <TouchableOpacity onPress={() => router.push("/(app)/live/replays")}
+            style={{ borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 4 }}>
+            <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 12 }}>Replays</Text>
           </TouchableOpacity>
-        )}
+          {token && (
+            <TouchableOpacity onPress={() => router.push("/(app)/live/start")}
+              style={{ backgroundColor: Colors.red, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 4, flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#fff" }} />
+              <Text style={{ color: "#fff", fontFamily: Fonts.mono, fontSize: 12, fontWeight: "700" }}>Go Live</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
       {loading ? <ActivityIndicator color={Colors.green} style={{ marginTop: 40 }} /> : (
         <FlatList data={streams} keyExtractor={item => item.room_name}
