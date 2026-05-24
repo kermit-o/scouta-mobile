@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Linking } from "react-native";
+import { View, Text, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Linking } from "react-native";
 import { useRouter, Link } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors } from "@/lib/constants";
+import { Button, Field } from "@/components/ui";
 
 const API = "https://api.scouta.co/api/v1";
 
@@ -45,7 +47,7 @@ export default function LoginScreen() {
 
         <TouchableOpacity onPress={handleGoogleLogin}
           style={{ backgroundColor: "#fff", padding: 14, alignItems: "center", borderRadius: 4, flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 20 }}>
-          <Text style={{ fontSize: 18, fontWeight: "700", color: "#4285F4" }}>G</Text>
+          <Ionicons name="logo-google" size={18} color="#4285F4" />
           <Text style={{ color: "#333", fontSize: 14, fontWeight: "600" }}>Continue with Google</Text>
         </TouchableOpacity>
 
@@ -55,14 +57,10 @@ export default function LoginScreen() {
           <View style={{ flex: 1, height: 1, backgroundColor: Colors.border }} />
         </View>
 
-        <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: "monospace", letterSpacing: 1, marginBottom: 6 }}>EMAIL</Text>
-        <TextInput value={email} onChangeText={setEmail} placeholder="you@email.com" placeholderTextColor={Colors.textMuted}
-          autoCapitalize="none" keyboardType="email-address"
-          style={{ backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder, color: Colors.text, padding: 14, fontSize: 15, fontFamily: "monospace", marginBottom: 16 }} />
+        <Field label="EMAIL" value={email} onChangeText={setEmail} placeholder="you@email.com"
+          autoCapitalize="none" keyboardType="email-address" />
 
-        <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: "monospace", letterSpacing: 1, marginBottom: 6 }}>PASSWORD</Text>
-        <TextInput value={password} onChangeText={setPassword} placeholder="Password" placeholderTextColor={Colors.textMuted} secureTextEntry
-          style={{ backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder, color: Colors.text, padding: 14, fontSize: 15, fontFamily: "monospace", marginBottom: 8 }} />
+        <Field label="PASSWORD" value={password} onChangeText={setPassword} placeholder="Password" secureTextEntry style={{ marginBottom: 8 }} />
 
         <Link href="/(auth)/forgot-password" asChild>
           <TouchableOpacity style={{ alignSelf: "flex-end", marginBottom: 24 }}>
@@ -70,12 +68,7 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </Link>
 
-        <TouchableOpacity onPress={handleLogin} disabled={loading || !email.trim() || !password.trim()}
-          style={{ backgroundColor: Colors.green, padding: 16, alignItems: "center", opacity: loading || !email.trim() || !password.trim() ? 0.5 : 1 }}>
-          {loading ? <ActivityIndicator color="#fff" /> : (
-            <Text style={{ color: "#fff", fontSize: 13, fontFamily: "monospace", letterSpacing: 1 }}>SIGN IN</Text>
-          )}
-        </TouchableOpacity>
+        <Button label="SIGN IN" onPress={handleLogin} loading={loading} disabled={!email.trim() || !password.trim()} />
 
         <View style={{ flexDirection: "row", justifyContent: "center", marginTop: 24, gap: 4 }}>
           <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: "monospace" }}>No account?</Text>

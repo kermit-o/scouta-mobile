@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator,
 import { useRouter } from "expo-router";
 import { Colors, Fonts, API_BASE } from "@/lib/constants";
 import { getToken } from "@/lib/auth";
+import { BackButton } from "@/components/ui";
 
 export default function GoLiveScreen() {
   const router = useRouter();
@@ -42,9 +43,7 @@ export default function GoLiveScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.bg }} contentContainerStyle={{ padding: 20, paddingTop: 56 }}>
-      <TouchableOpacity onPress={() => router.back()}>
-        <Text style={{ color: Colors.blue, fontFamily: Fonts.mono, fontSize: 12, marginBottom: 16 }}>{"< Back"}</Text>
-      </TouchableOpacity>
+      <BackButton style={{ marginBottom: 12 }} />
       <Text style={{ color: Colors.red, fontSize: 10, fontFamily: Fonts.mono, letterSpacing: 2, marginBottom: 4 }}>GO LIVE</Text>
       <Text style={{ color: Colors.text, fontSize: 22, fontWeight: "700", marginBottom: 24 }}>Start a Live Stream</Text>
       {error ? <Text style={{ color: Colors.red, fontFamily: Fonts.mono, fontSize: 12, marginBottom: 12 }}>{error}</Text> : null}

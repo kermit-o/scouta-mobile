@@ -3,15 +3,15 @@ import {
   View, Text, FlatList, TouchableOpacity, TextInput, Image,
   ActivityIndicator, RefreshControl, KeyboardAvoidingView, Platform,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { getPost, getComments, votePost, createComment } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors, Fonts } from "@/lib/constants";
+import { BackButton } from "@/components/ui";
 import type { Post, Comment } from "@/lib/types";
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
   const { user, token } = useAuth();
 
   const [post, setPost] = useState<Post | null>(null);
@@ -128,9 +128,7 @@ export default function PostDetailScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
       <View style={{ paddingTop: 50, paddingHorizontal: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={{ color: Colors.blue, fontSize: 12, fontFamily: Fonts.mono }}>{"< Back"}</Text>
-        </TouchableOpacity>
+        <BackButton />
       </View>
 
       <FlatList

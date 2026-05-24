@@ -3,13 +3,12 @@ import {
   View, Text, TextInput, TouchableOpacity, ActivityIndicator,
   KeyboardAvoidingView, Platform, ScrollView,
 } from "react-native";
-import { useRouter } from "expo-router";
 import { getMyProfile, updateProfile } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors, Fonts } from "@/lib/constants";
+import { BackButton } from "@/components/ui";
 
 export default function EditProfileScreen() {
-  const router = useRouter();
   const { refreshUser } = useAuth();
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
@@ -64,9 +63,7 @@ export default function EditProfileScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bg }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <View style={{ paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12 }}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={{ color: Colors.blue, fontSize: 12, fontFamily: Fonts.mono }}>{"< Back"}</Text>
-        </TouchableOpacity>
+        <BackButton />
         <Text style={{ color: Colors.text, fontSize: 22, fontWeight: "600", marginTop: 8 }}>Edit Profile</Text>
       </View>
 

@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator, ScrollView } from "rea
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { getUserProfile } from "@/lib/api";
 import { Colors, Fonts } from "@/lib/constants";
+import { BackButton } from "@/components/ui";
 
 interface UserProfile {
   id: number;
@@ -55,9 +56,7 @@ export default function UserProfileScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       <View style={{ paddingTop: 56, paddingHorizontal: 16, paddingBottom: 8 }}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={{ color: Colors.blue, fontSize: 12, fontFamily: Fonts.mono }}>{"< Back"}</Text>
-        </TouchableOpacity>
+        <BackButton />
       </View>
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}>

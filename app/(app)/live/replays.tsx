@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, Modal } from "react-native";
 import { WebView } from "react-native-webview";
-import { useRouter } from "expo-router";
 import { getRecordings } from "@/lib/api";
 import { Colors, Fonts } from "@/lib/constants";
+import { BackButton } from "@/components/ui";
 
 interface Recording {
   id: number;
@@ -24,7 +24,6 @@ function playerHTML(url: string) {
 }
 
 export default function ReplaysScreen() {
-  const router = useRouter();
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState<string | null>(null);
@@ -38,11 +37,9 @@ export default function ReplaysScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      <View style={{ paddingTop: 52, paddingHorizontal: 16, paddingBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+      <View style={{ paddingTop: 52, paddingHorizontal: 12, paddingBottom: 12, flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <BackButton />
         <Text style={{ color: Colors.text, fontSize: 20, fontWeight: "700" }}>Replays</Text>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={{ color: Colors.blue, fontFamily: Fonts.mono, fontSize: 12 }}>{"< Back"}</Text>
-        </TouchableOpacity>
       </View>
 
       {loading ? (

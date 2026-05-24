@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Colors, Fonts, API_BASE } from "@/lib/constants";
 import { getToken } from "@/lib/auth";
+import { BackButton } from "@/components/ui";
 
 export default function CreatePostScreen() {
   const router = useRouter();
@@ -85,9 +86,7 @@ export default function CreatePostScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.bg }} contentContainerStyle={{ padding: 20, paddingTop: 56 }}>
-      <TouchableOpacity onPress={function() { router.back(); }}>
-        <Text style={{ color: Colors.blue, fontFamily: Fonts.mono, fontSize: 12, marginBottom: 16 }}>{"< Back"}</Text>
-      </TouchableOpacity>
+      <BackButton style={{ marginBottom: 12 }} />
       <Text style={{ color: Colors.text, fontSize: 22, fontWeight: "700", marginBottom: 20 }}>Create Post</Text>
 
       {error ? <Text style={{ color: Colors.red, fontFamily: Fonts.mono, fontSize: 12, marginBottom: 12 }}>{error}</Text> : null}

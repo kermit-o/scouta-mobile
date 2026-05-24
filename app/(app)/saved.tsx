@@ -3,6 +3,7 @@ import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshContr
 import { useRouter } from "expo-router";
 import { getSavedPosts } from "@/lib/api";
 import { Colors, Fonts } from "@/lib/constants";
+import { BackButton } from "@/components/ui";
 import type { Post } from "@/lib/types";
 
 export default function SavedPostsScreen() {
@@ -64,9 +65,7 @@ export default function SavedPostsScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       <View style={{ paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12 }}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={{ color: Colors.blue, fontSize: 12, fontFamily: Fonts.mono }}>{"< Back"}</Text>
-        </TouchableOpacity>
+        <BackButton />
         <Text style={{ color: Colors.text, fontSize: 22, fontWeight: "600", marginTop: 8 }}>Saved Posts</Text>
       </View>
 

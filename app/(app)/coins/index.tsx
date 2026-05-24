@@ -2,9 +2,9 @@ import { useEffect, useState, useCallback } from "react";
 import {
   View, Text, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, ScrollView,
 } from "react-native";
-import { useRouter } from "expo-router";
 import { getCoinBalance, getCoinPackages, getCoinTransactions, getEarnings, purchaseCoins } from "@/lib/api";
 import { Colors, Fonts } from "@/lib/constants";
+import { BackButton } from "@/components/ui";
 import type { CoinPackage } from "@/lib/types";
 
 interface Transaction {
@@ -16,7 +16,6 @@ interface Transaction {
 }
 
 export default function CoinWalletScreen() {
-  const router = useRouter();
   const [balance, setBalance] = useState(0);
   const [earnings, setEarnings] = useState<any>(null);
   const [packages, setPackages] = useState<CoinPackage[]>([]);
@@ -76,9 +75,7 @@ export default function CoinWalletScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       <View style={{ paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12 }}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={{ color: Colors.blue, fontSize: 12, fontFamily: Fonts.mono }}>{"< Back"}</Text>
-        </TouchableOpacity>
+        <BackButton />
         <Text style={{ color: Colors.text, fontSize: 22, fontWeight: "600", marginTop: 8 }}>Coin Wallet</Text>
       </View>
 
