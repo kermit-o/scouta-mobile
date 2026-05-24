@@ -33,7 +33,14 @@ export default function GoLiveScreen() {
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (data.room_name) { router.replace(`/(app)/live/${data.room_name}`); }
+      if (data.room_name) {
+        // Pass the publish token from /live/start so the room uses it directly.
+        // The host must NOT re-join their own room (backend returns 409).
+        router.replace({
+          pathname: "/(app)/live/[roomName]",
+          params: { roomName: data.room_name, hostToken: data.token, title: data.title || title.trim() },
+        });
+      }
       else { setError(data.detail || "Failed to start"); }
     } catch { setError("Network error"); }
     setLoading(false);

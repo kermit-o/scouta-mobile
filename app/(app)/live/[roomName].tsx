@@ -121,7 +121,7 @@ function HostControls({ facing, setFacing }: { facing: "front" | "back"; setFaci
 }
 
 export default function LiveRoomScreen() {
-  const { roomName } = useLocalSearchParams<{ roomName: string }>();
+  const { roomName, hostToken, title: titleParam } = useLocalSearchParams<{ roomName: string; hostToken?: string; title?: string }>();
   const { user } = useAuth();
   const router = useRouter();
   const [status, setStatus] = useState<string>("connecting");
@@ -156,50 +156,68 @@ export default function LiveRoomScreen() {
   useEffect(() => {
     var ws: WebSocket|null = null;
     var interval: any = null;
+
+    // Chat WS + history + gift catalog + viewer-count polling. Shared by both
+    // the host and viewer paths once we have a LiveKit token.
+    async function setupRoom() {
+      try { var ch = await fetch(API + "/live/" + roomName + "/chat?limit=50"); var cd = await ch.json(); if (cd.messages) setChat(cd.messages); } catch {}
+      // WebSocket — pass the auth token so the server derives chat identity
+      // from it (anti-impersonation). Without it the connection is read-only.
+      var tk = await getToken();
+      var wsUrl = API.replace("https://","wss://").replace("http://","ws://") + "/live/" + roomName + "/ws" + (tk ? "?token=" + encodeURIComponent(tk) : "");
+      ws = new WebSocket(wsUrl); wsRef.current = ws;
+      ws.onmessage = function(e) {
+        try {
+          var m = JSON.parse(e.data);
+          if (m.type === "chat") setChat(function(p) { return p.concat(m).slice(-100); });
+          else if (m.type === "gift") { setGiftAnim({s:m.sender,e:m.emoji,n:m.gift_name}); setTimeout(function(){setGiftAnim(null);}, 3000); }
+          else if (m.type === "reaction") showReaction(m.emoji || "❤️");
+          else if (m.type === "stream_ended") setStatus("ended");
+        } catch {}
+      };
+      try { var gd = await getGiftCatalog(); setGifts(gd.gifts || []); } catch {}
+      interval = setInterval(async function() {
+        try {
+          var ar2 = await fetch(API + "/live/active"); var ad2 = await ar2.json();
+          var f2 = (ad2.streams||[]).find(function(x:any){return x.room_name===roomName;});
+          if (f2) setViewers(f2.viewer_count); else setStatus("ended");
+        } catch {}
+      }, 10000);
+    }
+
     (async () => {
+      // Host path: we already received a publish token from /live/start. The
+      // backend rejects a host re-joining their own room (already_broadcasting),
+      // so we must use that token directly instead of calling join.
+      if (hostToken) {
+        setIsHost(true);
+        setLkToken(hostToken as string);
+        if (titleParam) setTitle(titleParam as string);
+        setStatus("ok");
+        await setupRoom();
+        return;
+      }
+      // Viewer path.
       try {
         var r = await joinStream(roomName as string);
         if (r.status === 200 && r.data && r.data.token) {
           setStatus("ok"); setTitle(r.data.title || "");
           setLkToken(r.data.token);
-          // Check if this user started the stream (host)
-          try {
-            var ar = await fetch(API + "/live/active"); var ad = await ar.json();
-            var found = (ad.streams||[]).find(function(x:any){return x.room_name===roomName;});
-            if (found && found.host_username === user?.username) setIsHost(true);
-          } catch {}
-          // Chat history
-          try { var ch = await fetch(API + "/live/" + roomName + "/chat?limit=50"); var cd = await ch.json(); if (cd.messages) setChat(cd.messages); } catch {}
-          // WebSocket — pass the auth token so the server derives chat
-          // identity from it (anti-impersonation). Without it the connection
-          // is read-only and chat sends are rejected.
-          var tk = await getToken();
-          var wsUrl = API.replace("https://","wss://").replace("http://","ws://") + "/live/" + roomName + "/ws" + (tk ? "?token=" + encodeURIComponent(tk) : "");
-          ws = new WebSocket(wsUrl); wsRef.current = ws;
-          ws.onmessage = function(e) {
-            try {
-              var m = JSON.parse(e.data);
-              if (m.type === "chat") setChat(function(p) { return p.concat(m).slice(-100); });
-              else if (m.type === "gift") { setGiftAnim({s:m.sender,e:m.emoji,n:m.gift_name}); setTimeout(function(){setGiftAnim(null);}, 3000); }
-              else if (m.type === "reaction") showReaction(m.emoji || "❤️");
-              else if (m.type === "stream_ended") setStatus("ended");
-            } catch {}
-          };
-          // Gifts
-          try { var gd = await getGiftCatalog(); setGifts(gd.gifts || []); } catch {}
-          // Viewer count
-          interval = setInterval(async function() {
-            try {
-              var ar2 = await fetch(API + "/live/active"); var ad2 = await ar2.json();
-              var f2 = (ad2.streams||[]).find(function(x:any){return x.room_name===roomName;});
-              if (f2) setViewers(f2.viewer_count); else setStatus("ended");
-            } catch {}
-          }, 10000);
-        } else { setError((r.data && r.data.detail) || "Cannot join"); setStatus("fail"); }
+          await setupRoom();
+        } else if (r.status === 409) {
+          // This user is the host of this room but arrived without a publish
+          // token (e.g. re-opened from the list). Offer to end the orphaned
+          // stream so they can start fresh.
+          setIsHost(true);
+          setError("already_broadcasting");
+          setStatus("broadcasting_elsewhere");
+        } else {
+          setError((r.data && r.data.detail) || "Cannot join"); setStatus("fail");
+        }
       } catch { setError("Network error"); setStatus("fail"); }
     })();
     return function() { if (ws) ws.close(); if (interval) clearInterval(interval); };
-  }, [roomName]);
+  }, [roomName, hostToken]);
 
   function send() {
     if (!msg.trim() || !wsRef.current) return;
@@ -227,6 +245,26 @@ export default function LiveRoomScreen() {
       }}
     ]);
   }
+
+  async function endOrphanAndLeave() {
+    try { var t = await getToken(); await fetch(API + "/live/" + roomName + "/end", { method: "POST", headers: { Authorization: "Bearer " + t } }); } catch {}
+    router.replace("/(app)/live");
+  }
+
+  if (status === "broadcasting_elsewhere") return (
+    <View style={{flex:1,backgroundColor:Colors.bg,alignItems:"center",justifyContent:"center",padding:24}}>
+      <Ionicons name="radio" size={56} color={Colors.red} />
+      <Text style={{color:Colors.text,fontSize:20,fontWeight:"700",marginTop:16,marginBottom:8}}>Already Broadcasting</Text>
+      <Text style={{color:Colors.textMuted,fontFamily:Fonts.mono,fontSize:12,marginBottom:24,textAlign:"center"}}>This stream is still marked live from another session. End it, then start a new one.</Text>
+      <TouchableOpacity onPress={endOrphanAndLeave} style={{backgroundColor:Colors.red,paddingHorizontal:24,paddingVertical:12,marginBottom:12,flexDirection:"row",alignItems:"center",gap:8}}>
+        <Ionicons name="stop-circle-outline" size={16} color="#fff" />
+        <Text style={{color:"#fff",fontFamily:Fonts.mono,fontWeight:"700"}}>END PREVIOUS STREAM</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={function(){router.back();}} style={{paddingHorizontal:24,paddingVertical:10}}>
+        <Text style={{color:Colors.textMuted,fontFamily:Fonts.mono,fontSize:12}}>Back</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   if (status === "ended" || status === "fail") return (
     <View style={{flex:1,backgroundColor:Colors.bg,alignItems:"center",justifyContent:"center",padding:24}}>
