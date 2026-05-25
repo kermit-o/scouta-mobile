@@ -1,3 +1,4 @@
+import "@/polyfills"; // must precede LiveKit imports: defines DOMException on Hermes
 import { useEffect, useState, useRef, useCallback } from "react";
 import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Alert, Animated, Easing, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
