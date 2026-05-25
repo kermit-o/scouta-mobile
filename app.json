@@ -2,7 +2,7 @@
   "expo": {
     "name": "Scouta",
     "slug": "scouta",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -11,10 +11,10 @@
       "policy": "appVersion"
     },
     "updates": {
-      "enabled": true,
+      "enabled": false,
       "url": "https://u.expo.dev/49ff3468-34aa-4ab0-9806-ea89e58c4d55",
       "fallbackToCacheTimeout": 0,
-      "checkAutomatically": "ON_LOAD"
+      "checkAutomatically": "ON_ERROR_RECOVERY"
     },
     "splash": {
       "image": "./assets/splash-icon.png",
