@@ -148,6 +148,12 @@ export default function LiveRoomScreen() {
     setHearts((prev) => [...prev.slice(-24), { id, emoji, x }]);
   }, []);
 
+  // Stable callback — passing a new function to LiveKitRoom on every render
+  // makes it tear down and re-establish the connection.
+  const onLkError = useCallback((e: Error) => {
+    setError(e.message || "Stream error");
+  }, []);
+
   // Native audio routing for the call. Start on enter, release on exit.
   useEffect(() => {
     AudioSession.startAudioSession().catch(() => {});
@@ -294,9 +300,9 @@ export default function LiveRoomScreen() {
           token={lkToken}
           connect={true}
           audio={isHost}
-          video={isHost ? { facingMode: "user" } : false}
+          video={isHost}
           options={ROOM_OPTIONS}
-          onError={function(e){ setError(e.message || "Stream error"); }}
+          onError={onLkError}
         >
           <VideoStage isHost={isHost} facing={facing} />
           {isHost && <HostControls facing={facing} setFacing={setFacing} />}

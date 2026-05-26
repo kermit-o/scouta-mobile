@@ -1,13 +1,14 @@
 import { useEffect, useState, useRef } from "react";
 import {
   View, Text, FlatList, TextInput, TouchableOpacity,
-  ActivityIndicator, KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { getMessages, sendMessage } from "@/lib/api";
+import { getMessages } from "@/lib/api";
+import { getToken } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
-import { Colors, Fonts } from "@/lib/constants";
+import { Colors, Fonts, WS_BASE } from "@/lib/constants";
 import { BackButton, Loading, EmptyState } from "@/components/ui";
 import type { Message } from "@/lib/types";
 
@@ -17,31 +18,48 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
   const listRef = useRef<FlatList>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   const conversationId = Number(convId);
 
-  async function load() {
-    try {
-      const data = await getMessages(conversationId);
-      const items = Array.isArray(data) ? data : data.messages || [];
-      setMessages(items);
-    } catch {}
-    setLoading(false);
-  }
+  // DMs are delivered over a WebSocket — the backend has no REST send endpoint.
+  // Load history first, then open the socket; the server echoes our own sends
+  // back (type "message") and pushes the peer's (type "new_message").
+  useEffect(() => {
+    let ws: WebSocket | null = null;
+    let active = true;
+    (async () => {
+      try {
+        const data = await getMessages(conversationId);
+        const items = Array.isArray(data) ? data : (data as any).messages || [];
+        if (active) setMessages(items);
+      } catch {}
+      if (active) setLoading(false);
 
-  useEffect(() => { load(); }, [convId]);
+      const tk = await getToken();
+      ws = new WebSocket(`${WS_BASE}/messages/ws/${conversationId}?token=${encodeURIComponent(tk || "")}`);
+      wsRef.current = ws;
+      ws.onmessage = (e) => {
+        try {
+          const m = JSON.parse(e.data);
+          if (!m || m.id == null) return;
+          setMessages((prev) =>
+            prev.some((x) => x.id === m.id)
+              ? prev
+              : [...prev, { id: m.id, sender_id: m.sender_id, body: m.body, read: true, created_at: m.created_at }]
+          );
+        } catch {}
+      };
+    })();
+    return () => { active = false; if (ws) ws.close(); };
+  }, [conversationId]);
 
-  async function handleSend() {
-    if (!text.trim() || sending) return;
-    setSending(true);
-    try {
-      await sendMessage(conversationId, text.trim());
-      setText("");
-      await load();
-    } catch {}
-    setSending(false);
+  function handleSend() {
+    const body = text.trim();
+    if (!body || wsRef.current?.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(body);
+    setText("");
   }
 
   function timeStr(dateStr: string) {
@@ -102,6 +120,7 @@ export default function ChatScreen() {
           onChangeText={setText}
           placeholder="Type a message..."
           placeholderTextColor={Colors.textMuted}
+          onSubmitEditing={handleSend}
           style={{
             flex: 1, color: Colors.text, fontSize: 14,
             backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder,
@@ -110,13 +129,13 @@ export default function ChatScreen() {
         />
         <TouchableOpacity
           onPress={handleSend}
-          disabled={sending || !text.trim()}
+          disabled={!text.trim()}
           style={{
             width: 40, height: 40, alignItems: "center", justifyContent: "center",
             backgroundColor: text.trim() ? Colors.blue : Colors.border,
           }}
         >
-          {sending ? <ActivityIndicator color={Colors.text} size="small" /> : <Ionicons name="send" size={16} color={Colors.text} />}
+          <Ionicons name="send" size={16} color={Colors.text} />
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
