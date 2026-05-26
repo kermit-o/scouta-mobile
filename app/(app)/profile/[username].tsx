@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator, ScrollView } from "react-native";
+import { View, Text, TouchableOpacity, ActivityIndicator, ScrollView, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { getUserProfile } from "@/lib/api";
+import { getUserProfile, reportContent, blockUser } from "@/lib/api";
 import { Colors, Fonts } from "@/lib/constants";
 import { BackButton } from "@/components/ui";
 
@@ -34,6 +34,34 @@ export default function UserProfileScreen() {
   }
 
   useEffect(() => { load(); }, [username]);
+
+  function onReport() {
+    const submit = (reason: string) => {
+      reportContent("user", String(profile?.id ?? username), reason).then((r) => {
+        Alert.alert(r.ok ? "Reported" : "Error", r.ok ? "Thanks. Our team will review this." : "Could not submit the report.");
+      });
+    };
+    Alert.alert("Report user", "Why are you reporting @" + username + "?", [
+      { text: "Spam", onPress: () => submit("spam") },
+      { text: "Harassment", onPress: () => submit("harassment") },
+      { text: "Inappropriate", onPress: () => submit("inappropriate") },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }
+
+  function onBlock() {
+    Alert.alert("Block @" + username + "?", "You won't see their content and they can't interact with you.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Block",
+        style: "destructive",
+        onPress: () => blockUser(username).then((r) => {
+          Alert.alert(r.ok ? "Blocked" : "Error", r.ok ? "@" + username + " has been blocked." : "Could not block this user.");
+          if (r.ok) router.back();
+        }),
+      },
+    ]);
+  }
 
   if (loading) {
     return (
@@ -125,6 +153,21 @@ export default function UserProfileScreen() {
         >
           <Text style={{ color: Colors.text, fontSize: 14, fontFamily: Fonts.mono, fontWeight: "700" }}>Message</Text>
         </TouchableOpacity>
+
+        <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+          <TouchableOpacity
+            onPress={onReport}
+            style={{ flex: 1, paddingVertical: 12, alignItems: "center", borderWidth: 1, borderColor: Colors.border }}
+          >
+            <Text style={{ color: Colors.textSecondary, fontSize: 12, fontFamily: Fonts.mono }}>Report</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={onBlock}
+            style={{ flex: 1, paddingVertical: 12, alignItems: "center", borderWidth: 1, borderColor: Colors.red + "44" }}
+          >
+            <Text style={{ color: Colors.red, fontSize: 12, fontFamily: Fonts.mono }}>Block</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </View>
   );
