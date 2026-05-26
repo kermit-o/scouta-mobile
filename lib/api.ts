@@ -141,6 +141,12 @@ export async function getUserProfile(username: string) {
   return res.json();
 }
 
+export async function followUser(username: string) {
+  // Toggle endpoint — returns { action: "followed"|"unfollowed", followers }.
+  const res = await apiFetch(`/u/${username}/follow`, { method: "POST" });
+  return res.json();
+}
+
 export async function updateProfile(data: Record<string, string>) {
   const res = await apiFetch("/auth/profile", {
     method: "PUT",

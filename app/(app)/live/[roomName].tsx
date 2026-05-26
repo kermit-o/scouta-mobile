@@ -5,7 +5,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { LiveKitRoom, AudioSession, VideoTrack, useTracks, useLocalParticipant, useConnectionState, isTrackReference } from "@livekit/react-native";
 import { Track, ConnectionState, VideoPresets, type LocalVideoTrack, type RoomOptions } from "livekit-client";
 import { Ionicons } from "@expo/vector-icons";
-import { joinStream, getGiftCatalog, sendGift, sendReaction } from "@/lib/api";
+import { joinStream, getGiftCatalog, sendGift, sendReaction, followUser } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors, Fonts, LIVEKIT_URL } from "@/lib/constants";
@@ -169,6 +169,14 @@ export default function LiveRoomScreen() {
   const wsRef = useRef<WebSocket|null>(null);
   const chatListRef = useRef<FlatList>(null);
   const heartId = useRef(0);
+  // End-of-live stats (client-side).
+  const startRef = useRef<number>(Date.now());
+  const peakRef = useRef(0);
+  const giftCoinsRef = useRef(0);
+  const giftCountRef = useRef(0);
+  const [hostUser, setHostUser] = useState<{ username: string; name: string } | null>(null);
+  const [rating, setRating] = useState(0);
+  const [followed, setFollowed] = useState(false);
 
   const showReaction = useCallback((emoji: string) => {
     const id = ++heartId.current;
@@ -195,6 +203,7 @@ export default function LiveRoomScreen() {
     // Chat WS + history + gift catalog + viewer-count polling. Shared by both
     // the host and viewer paths once we have a LiveKit token.
     async function setupRoom() {
+      startRef.current = Date.now();
       try { var ch = await fetch(API + "/live/" + roomName + "/chat?limit=50"); var cd = await ch.json(); if (cd.messages) setChat(cd.messages); } catch {}
       // WebSocket — pass the auth token so the server derives chat identity
       // from it (anti-impersonation). Without it the connection is read-only.
@@ -205,7 +214,7 @@ export default function LiveRoomScreen() {
         try {
           var m = JSON.parse(e.data);
           if (m.type === "chat") setChat(function(p) { return p.concat(m).slice(-100); });
-          else if (m.type === "gift") { setGiftAnim({s:m.sender,e:m.emoji,n:m.gift_name}); setTimeout(function(){setGiftAnim(null);}, 3000); }
+          else if (m.type === "gift") { setGiftAnim({s:m.sender,e:m.emoji,n:m.gift_name}); setTimeout(function(){setGiftAnim(null);}, 3000); giftCoinsRef.current += (m.coin_amount || 0); giftCountRef.current += 1; }
           else if (m.type === "reaction") showReaction(m.emoji || "❤️");
           else if (m.type === "stream_ended") setStatus("ended");
         } catch {}
@@ -215,7 +224,11 @@ export default function LiveRoomScreen() {
         try {
           var ar2 = await fetch(API + "/live/active"); var ad2 = await ar2.json();
           var f2 = (ad2.streams||[]).find(function(x:any){return x.room_name===roomName;});
-          if (f2) setViewers(f2.viewer_count); else setStatus("ended");
+          if (f2) {
+            setViewers(f2.viewer_count);
+            if (f2.viewer_count > peakRef.current) peakRef.current = f2.viewer_count;
+            if (f2.host_username) setHostUser(function(prev){ return prev || { username: f2.host_username, name: f2.host_display_name || f2.host_username }; });
+          } else setStatus("ended");
         } catch {}
       }, 10000);
     }
@@ -276,7 +289,7 @@ export default function LiveRoomScreen() {
       {text:"Cancel",style:"cancel"},
       {text:"End",style:"destructive",onPress:async function(){
         try{var t=await getToken();await fetch(API+"/live/"+roomName+"/end",{method:"POST",headers:{Authorization:"Bearer "+t}});}catch{}
-        router.back();
+        setStatus("ended");
       }}
     ]);
   }
@@ -284,6 +297,11 @@ export default function LiveRoomScreen() {
   async function endOrphanAndLeave() {
     try { var t = await getToken(); await fetch(API + "/live/" + roomName + "/end", { method: "POST", headers: { Authorization: "Bearer " + t } }); } catch {}
     router.replace("/(app)/live");
+  }
+
+  async function doFollow() {
+    if (!hostUser) return;
+    try { var r = await followUser(hostUser.username); setFollowed(r.action === "followed"); } catch {}
   }
 
   if (status === "broadcasting_elsewhere") return (
@@ -301,16 +319,91 @@ export default function LiveRoomScreen() {
     </View>
   );
 
-  if (status === "ended" || status === "fail") return (
+  if (status === "fail") return (
     <View style={{flex:1,backgroundColor:Colors.bg,alignItems:"center",justifyContent:"center",padding:24}}>
-      <Ionicons name={status==="ended"?"radio-outline":"warning-outline"} size={56} color={status==="ended"?Colors.textMuted:Colors.red} />
-      <Text style={{color:Colors.text,fontSize:20,fontWeight:"700",marginTop:16,marginBottom:8}}>{status==="ended"?"Stream Ended":"Cannot Join"}</Text>
+      <Ionicons name="warning-outline" size={56} color={Colors.red} />
+      <Text style={{color:Colors.text,fontSize:20,fontWeight:"700",marginTop:16,marginBottom:8}}>Cannot Join</Text>
       <Text style={{color:Colors.textMuted,fontFamily:Fonts.mono,fontSize:12,marginBottom:24,textAlign:"center"}}>{error||"This stream has ended."}</Text>
       <TouchableOpacity onPress={function(){router.back();}} style={{borderWidth:1,borderColor:Colors.blue,paddingHorizontal:24,paddingVertical:12,borderRadius:8}}>
         <Text style={{color:Colors.blue,fontFamily:Fonts.mono}}>Back to Streams</Text>
       </TouchableOpacity>
     </View>
   );
+
+  if (status === "ended") {
+    const mins = Math.max(1, Math.round((Date.now() - startRef.current) / 60000));
+    if (isHost) {
+      const tip = peakRef.current >= 10
+        ? "Great reach! Post a clip to your feed to keep the momentum going."
+        : "Tip: announce your next live in a post so your followers get notified.";
+      const stat = (label: string, value: number | string) => (
+        <View style={{ alignItems: "center", flex: 1 }}>
+          <Text style={{ color: Colors.text, fontSize: 26, fontFamily: Fonts.mono, fontWeight: "700" }}>{value}</Text>
+          <Text style={{ color: Colors.textMuted, fontSize: 9, fontFamily: Fonts.mono, letterSpacing: 1, marginTop: 2 }}>{label}</Text>
+        </View>
+      );
+      return (
+        <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: "center", padding: 24 }}>
+          <View style={{ alignItems: "center", marginBottom: 28 }}>
+            <Ionicons name="stats-chart" size={48} color={Colors.green} />
+            <Text style={{ color: Colors.text, fontSize: 22, fontWeight: "700", marginTop: 12 }}>Live Ended</Text>
+            <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 12, marginTop: 4 }}>Here's how it went</Text>
+          </View>
+          <View style={{ flexDirection: "row", backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, paddingVertical: 20, marginBottom: 16 }}>
+            {stat("MINUTES", mins)}
+            {stat("PEAK VIEWERS", peakRef.current)}
+            {stat("GIFTS", giftCountRef.current)}
+          </View>
+          {giftCountRef.current > 0 ? (
+            <Text style={{ color: Colors.gold, fontFamily: Fonts.mono, fontSize: 13, textAlign: "center", marginBottom: 16 }}>🪙 {giftCoinsRef.current} coins received</Text>
+          ) : null}
+          <View style={{ flexDirection: "row", gap: 10, backgroundColor: Colors.blue + "18", borderWidth: 1, borderColor: Colors.blue + "44", padding: 14, marginBottom: 24 }}>
+            <Ionicons name="bulb-outline" size={18} color={Colors.blue} />
+            <Text style={{ color: Colors.text, fontSize: 13, lineHeight: 18, flex: 1 }}>{tip}</Text>
+          </View>
+          <TouchableOpacity onPress={function(){router.back();}} style={{ backgroundColor: Colors.green, paddingVertical: 15, alignItems: "center" }}>
+            <Text style={{ color: "#fff", fontFamily: Fonts.mono, fontSize: 13, letterSpacing: 1, fontWeight: "700" }}>DONE</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    // Viewer
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: "center", padding: 24 }}>
+        <View style={{ alignItems: "center", marginBottom: 24 }}>
+          <Ionicons name="radio-outline" size={52} color={Colors.textMuted} />
+          <Text style={{ color: Colors.text, fontSize: 22, fontWeight: "700", marginTop: 12 }}>Stream Ended</Text>
+          <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 12, marginTop: 4, textAlign: "center" }}>
+            {hostUser ? `${hostUser.name} finished the live` : "This live has ended."}
+          </Text>
+        </View>
+
+        <Text style={{ color: Colors.textMuted, fontSize: 11, fontFamily: Fonts.mono, letterSpacing: 1, textAlign: "center", marginBottom: 8 }}>RATE THIS LIVE</Text>
+        <View style={{ flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 24 }}>
+          {[1,2,3,4,5].map(function(n){return (
+            <TouchableOpacity key={n} onPress={function(){setRating(n);}} hitSlop={{top:6,bottom:6,left:6,right:6}}>
+              <Ionicons name={n <= rating ? "star" : "star-outline"} size={30} color={Colors.gold} />
+            </TouchableOpacity>
+          );})}
+        </View>
+
+        {hostUser ? (
+          <TouchableOpacity onPress={doFollow} disabled={followed}
+            style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, marginBottom: 10, borderWidth: 1, borderColor: followed ? Colors.green : Colors.blue, backgroundColor: followed ? Colors.green + "22" : "transparent" }}>
+            <Ionicons name={followed ? "checkmark" : "person-add-outline"} size={16} color={followed ? Colors.green : Colors.blue} />
+            <Text style={{ color: followed ? Colors.green : Colors.blue, fontFamily: Fonts.mono, fontSize: 13 }}>{followed ? "Following" : `Follow ${hostUser.name}`}</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        <TouchableOpacity onPress={function(){router.replace("/(app)/live");}} style={{ backgroundColor: Colors.green, paddingVertical: 15, alignItems: "center", marginBottom: 10 }}>
+          <Text style={{ color: "#fff", fontFamily: Fonts.mono, fontSize: 13, letterSpacing: 1, fontWeight: "700" }}>WATCH OTHER LIVES</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={function(){router.back();}} style={{ paddingVertical: 10, alignItems: "center" }}>
+          <Text style={{ color: Colors.textMuted, fontFamily: Fonts.mono, fontSize: 12 }}>Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (status === "connecting") return (
     <View style={{flex:1,backgroundColor:Colors.bg,alignItems:"center",justifyContent:"center"}}>
