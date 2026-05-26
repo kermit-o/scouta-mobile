@@ -1,5 +1,5 @@
 import "@/polyfills"; // must precede LiveKit imports: defines DOMException on Hermes
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, memo } from "react";
 import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Alert, Animated, Easing, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { LiveKitRoom, AudioSession, VideoTrack, useTracks, useLocalParticipant, useConnectionState, isTrackReference } from "@livekit/react-native";
@@ -120,6 +120,34 @@ function HostControls({ facing, setFacing }: { facing: "front" | "back"; setFaci
     </View>
   );
 }
+
+// Memoized so the LiveKit connection isn't torn down/re-established when the
+// parent re-renders on every chat message, reaction or viewer-count tick.
+// Only re-renders when the token, role or camera facing actually change.
+const LiveStage = memo(function LiveStage({
+  token, isHost, facing, setFacing, onError,
+}: {
+  token: string;
+  isHost: boolean;
+  facing: "front" | "back";
+  setFacing: (f: "front" | "back") => void;
+  onError: (e: Error) => void;
+}) {
+  return (
+    <LiveKitRoom
+      serverUrl={LIVEKIT_URL}
+      token={token}
+      connect={true}
+      audio={isHost}
+      video={isHost}
+      options={ROOM_OPTIONS}
+      onError={onError}
+    >
+      <VideoStage isHost={isHost} facing={facing} />
+      {isHost && <HostControls facing={facing} setFacing={setFacing} />}
+    </LiveKitRoom>
+  );
+});
 
 export default function LiveRoomScreen() {
   const { roomName, hostToken, title: titleParam } = useLocalSearchParams<{ roomName: string; hostToken?: string; title?: string }>();
@@ -295,18 +323,7 @@ export default function LiveRoomScreen() {
     <View style={{flex:1,backgroundColor:"#000"}}>
       {/* Native LiveKit video — full screen */}
       {lkToken ? (
-        <LiveKitRoom
-          serverUrl={LIVEKIT_URL}
-          token={lkToken}
-          connect={true}
-          audio={isHost}
-          video={isHost}
-          options={ROOM_OPTIONS}
-          onError={onLkError}
-        >
-          <VideoStage isHost={isHost} facing={facing} />
-          {isHost && <HostControls facing={facing} setFacing={setFacing} />}
-        </LiveKitRoom>
+        <LiveStage token={lkToken} isHost={isHost} facing={facing} setFacing={setFacing} onError={onLkError} />
       ) : (
         <View style={[StyleSheet.absoluteFill,{alignItems:"center",justifyContent:"center"}]}>
           <Ionicons name="radio-outline" size={64} color="rgba(255,255,255,0.12)" />
