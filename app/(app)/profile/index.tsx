@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, ScrollView } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { getMyProfile } from "@/lib/api";
+import { getMyProfile, deleteAccount } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors, Fonts } from "@/lib/constants";
 import { Loading } from "@/components/ui";
@@ -36,6 +36,40 @@ export default function MyProfileScreen() {
   }
 
   useEffect(() => { load(); }, []);
+
+  function confirmDeleteAccount() {
+    // Two-step confirmation: deletion is irreversible for the user.
+    Alert.alert(
+      "Delete account",
+      "This permanently deletes your account and removes your personal data. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => Alert.alert(
+            "Are you sure?",
+            "Your account will be deleted and you'll be signed out.",
+            [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Delete my account",
+                style: "destructive",
+                onPress: async () => {
+                  const r = await deleteAccount();
+                  if (r.ok) {
+                    await logout();
+                  } else {
+                    Alert.alert("Error", "Could not delete your account. Please try again.");
+                  }
+                },
+              },
+            ],
+          ),
+        },
+      ],
+    );
+  }
 
   if (loading) return <Loading />;
 
@@ -125,6 +159,13 @@ export default function MyProfileScreen() {
         >
           <Ionicons name="log-out-outline" size={16} color={Colors.red} />
           <Text style={{ color: Colors.red, fontSize: 14, fontFamily: Fonts.mono }}>Log out</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={confirmDeleteAccount}
+          style={{ marginTop: 16, paddingVertical: 12, alignItems: "center" }}
+        >
+          <Text style={{ color: Colors.textMuted, fontSize: 12, fontFamily: Fonts.mono }}>Delete account</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>

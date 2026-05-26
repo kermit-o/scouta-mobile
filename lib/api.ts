@@ -13,7 +13,7 @@ async function apiFetch(path: string, options: RequestInit = {}): Promise<Respon
   return fetch(`${API_BASE}${path}`, { ...options, headers });
 }
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
+// ── Auth ──────────────────────────────────────────────────
 export async function login(email: string, password: string) {
   const res = await apiFetch("/auth/login", {
     method: "POST",
@@ -43,7 +43,14 @@ export async function getMe() {
   return res.json();
 }
 
-// ── Posts ──────────────────────────────────────────────────────────────────────
+// Store-compliant account deletion. Anonymizes PII server-side and blocks
+// further auth; the caller should clear the local session afterwards.
+export async function deleteAccount() {
+  const res = await apiFetch("/account", { method: "DELETE" });
+  return { ok: res.ok, status: res.status };
+}
+
+// ── Posts ─────────────────────────────────────────────────
 export async function getFeed(sort = "recent", limit = 20, offset = 0, tag?: string) {
   let url = `/orgs/${ORG_ID}/posts?status=published&sort=${sort}&limit=${limit}&offset=${offset}`;
   if (tag) url += `&tag=${encodeURIComponent(tag)}`;
@@ -87,7 +94,7 @@ export async function getSavedPosts(limit = 20, offset = 0) {
   return res.json();
 }
 
-// ── Comments ──────────────────────────────────────────────────────────────────
+// ── Comments ────────────────────────────────────────────
 export async function getComments(postId: number, limit = 50, offset = 0) {
   const res = await apiFetch(`/orgs/${ORG_ID}/posts/${postId}/comments?limit=${limit}&offset=${offset}`);
   return res.json();
@@ -109,7 +116,7 @@ export async function voteComment(postId: number, commentId: number, value: 1 | 
   return res.json();
 }
 
-// ── Agents ────────────────────────────────────────────────────────────────────
+// ── Agents ──────────────────────────────────────────────
 export async function getLeaderboard(limit = 50) {
   const res = await apiFetch(`/agents/leaderboard?limit=${limit}`);
   return res.json();
@@ -130,7 +137,7 @@ export async function unfollowAgent(agentId: number) {
   return res.json();
 }
 
-// ── Profile ───────────────────────────────────────────────────────────────────
+// ── Profile ────────────────────────────────────────────
 export async function getMyProfile() {
   const res = await apiFetch("/profile/me");
   return res.json();
@@ -155,13 +162,13 @@ export async function updateProfile(data: Record<string, string>) {
   return res.json();
 }
 
-// ── Search ────────────────────────────────────────────────────────────────────
+// ── Search ──────────────────────────────────────────────
 export async function globalSearch(q: string) {
   const res = await apiFetch(`/search?q=${encodeURIComponent(q)}`);
   return res.json();
 }
 
-// ── Notifications ─────────────────────────────────────────────────────────────
+// ── Notifications ────────────────────────────────────────
 export async function getNotifications(limit = 20, offset = 0) {
   const res = await apiFetch(`/notifications?limit=${limit}&offset=${offset}`);
   return res.json();
@@ -172,7 +179,7 @@ export async function markAllRead() {
   return res.json();
 }
 
-// ── Messages ──────────────────────────────────────────────────────────────────
+// ── Messages ──────────────────────────────────────────
 export async function getConversations() {
   const res = await apiFetch("/messages/conversations");
   return res.json();
@@ -201,7 +208,7 @@ export async function getUnreadCount() {
   return res.json();
 }
 
-// ── Live ──────────────────────────────────────────────────────────────────────
+// ── Live ────────────────────────────────────────────────
 export async function getActiveStreams() {
   const res = await apiFetch("/live/active");
   return res.json();
@@ -247,7 +254,7 @@ export async function getRecordings(userId?: number) {
   return res.json();
 }
 
-// ── Coins ─────────────────────────────────────────────────────────────────────
+// ── Coins ────────────────────────────────────────────────
 export async function getCoinBalance() {
   const res = await apiFetch("/coins/balance");
   return res.json();
