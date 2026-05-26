@@ -154,6 +154,14 @@ export async function followUser(username: string) {
   return res.json();
 }
 
+export async function updateProfile(data: Record<string, string>) {
+  const res = await apiFetch("/auth/profile", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
 // ── Trust & Safety ──
 export async function reportContent(targetType: string, targetId: string, reason: string, details?: string) {
   const res = await apiFetch("/report", {
