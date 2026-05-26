@@ -4,12 +4,19 @@ import {
   ActivityIndicator, RefreshControl, KeyboardAvoidingView, Platform,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
+import { WebView } from "react-native-webview";
 import { Ionicons } from "@expo/vector-icons";
 import { getPost, getComments, votePost, createComment } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors, Fonts } from "@/lib/constants";
 import { BackButton, Loading, EmptyState } from "@/components/ui";
 import type { Post, Comment } from "@/lib/types";
+
+// Inline HTML5 player in a WebView — plays uploaded post videos (mp4 from R2)
+// without a native video module, so it ships over OTA. User taps to play.
+function videoHTML(url: string) {
+  return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{margin:0;padding:0}body{background:#000}video{width:100vw;height:100vh;object-fit:contain}</style></head><body><video controls playsinline src="${url}"></video></body></html>`;
+}
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -149,8 +156,14 @@ export default function PostDetailScreen() {
               <Image source={{ uri: post.media_url }} style={{ width: "100%", height: 250, borderRadius: 4, marginBottom: 12, backgroundColor: "#111" }} resizeMode="cover" />
             )}
             {post.media_url && post.media_type === "video" && (
-              <View style={{ width: "100%", height: 200, borderRadius: 4, marginBottom: 12, backgroundColor: "#111", alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="play-circle-outline" size={52} color="rgba(255,255,255,0.4)" />
+              <View style={{ width: "100%", height: 220, borderRadius: 4, marginBottom: 12, backgroundColor: "#000", overflow: "hidden" }}>
+                <WebView
+                  source={{ html: videoHTML(post.media_url) }}
+                  style={{ flex: 1, backgroundColor: "#000" }}
+                  allowsInlineMediaPlayback
+                  mediaPlaybackRequiresUserAction
+                  scrollEnabled={false}
+                />
               </View>
             )}
 
