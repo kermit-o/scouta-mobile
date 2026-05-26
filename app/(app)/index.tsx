@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { View, Text, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Image } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { getFeed } from "@/lib/api";
 import { Colors } from "@/lib/constants";
 import { EmptyState } from "@/components/ui";
+import { PostVideo } from "@/components/PostVideo";
 import type { Post } from "@/lib/types";
 
 const SORTS = ["recent", "hot", "top", "commented"] as const;
@@ -17,6 +18,14 @@ export default function FeedScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const [activeId, setActiveId] = useState<number | null>(null);
+
+  // Autoplay only the most-visible video in the feed.
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
+  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: { item: Post }[] }) => {
+    const vid = viewableItems.find((v) => v.item.media_type === "video");
+    setActiveId(vid ? vid.item.id : null);
+  }).current;
 
   async function loadPosts(reset = false) {
     const newOffset = reset ? 0 : offset;
@@ -71,10 +80,7 @@ export default function FeedScreen() {
           <Image source={{ uri: item.media_url }} style={{ width: "100%", height: 200, backgroundColor: "#111" }} resizeMode="cover" />
         )}
         {item.media_url && item.media_type === "video" && (
-          <View style={{ width: "100%", height: 160, backgroundColor: "#111", alignItems: "center", justifyContent: "center" }}>
-            <Ionicons name="play-circle-outline" size={44} color="rgba(255,255,255,0.5)" />
-            <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: "monospace", marginTop: 4 }}>Video</Text>
-          </View>
+          <PostVideo url={item.media_url} active={item.id === activeId} height={200} />
         )}
 
         <View style={{ padding: 14 }}>
@@ -167,6 +173,9 @@ export default function FeedScreen() {
           data={posts}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderPost}
+          extraData={activeId}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.green} />}
           onEndReached={() => { if (hasMore && !loading) loadPosts(); }}

@@ -15,7 +15,7 @@ import type { Post, Comment } from "@/lib/types";
 // Inline HTML5 player in a WebView — plays uploaded post videos (mp4 from R2)
 // without a native video module, so it ships over OTA. User taps to play.
 function videoHTML(url: string) {
-  return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{margin:0;padding:0}body{background:#000}video{width:100vw;height:100vh;object-fit:contain}</style></head><body><video controls playsinline src="${url}"></video></body></html>`;
+  return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{margin:0;padding:0}body{background:#000}video{width:100vw;height:100vh;object-fit:contain}</style></head><body><video controls playsinline preload="metadata" src="${url}#t=0.1"></video></body></html>`;
 }
 
 export default function PostDetailScreen() {
