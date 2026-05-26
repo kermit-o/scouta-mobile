@@ -1,6 +1,6 @@
 import "@/polyfills"; // must precede LiveKit imports: defines DOMException on Hermes
 import { useEffect, useState, useRef, useCallback, memo } from "react";
-import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Alert, Animated, Easing, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Alert, Animated, Easing, StyleSheet, KeyboardAvoidingView, Platform, PermissionsAndroid } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { LiveKitRoom, AudioSession, VideoTrack, useTracks, useLocalParticipant, useConnectionState, isTrackReference } from "@livekit/react-native";
 import { Track, ConnectionState, VideoPresets, type LocalVideoTrack, type RoomOptions } from "livekit-client";
@@ -238,6 +238,19 @@ export default function LiveRoomScreen() {
       // backend rejects a host re-joining their own room (already_broadcasting),
       // so we must use that token directly instead of calling join.
       if (hostToken) {
+        // Hosts publish, so camera+mic must be granted before connecting,
+        // otherwise getUserMedia fails silently and the video never starts.
+        if (Platform.OS === "android") {
+          try {
+            var res = await PermissionsAndroid.requestMultiple([
+              PermissionsAndroid.PERMISSIONS.CAMERA,
+              PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+            ]);
+            if (res[PermissionsAndroid.PERMISSIONS.CAMERA] !== "granted" || res[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] !== "granted") {
+              setError("Camera and microphone permission are required to go live."); setStatus("fail"); return;
+            }
+          } catch {}
+        }
         setIsHost(true);
         setLkToken(hostToken as string);
         if (titleParam) setTitle(titleParam as string);
