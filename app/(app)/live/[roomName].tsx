@@ -49,11 +49,29 @@ function FloatingHeart({ emoji, x, onDone }: { emoji: string; x: number; onDone:
 
 // Full-screen native video. For the host we show their own (local) camera; for
 // viewers we show the host's remote camera. Must live inside <LiveKitRoom>.
-function VideoStage({ isHost, facing }: { isHost: boolean; facing: "front" | "back" }) {
+function VideoStage({ isHost, facing, onHostGone }: { isHost: boolean; facing: "front" | "back"; onHostGone: () => void }) {
   const tracks = useTracks([Track.Source.Camera]);
   const connState = useConnectionState();
   const refs = tracks.filter(isTrackReference);
   const cam = refs.find((t) => (isHost ? t.participant.isLocal : !t.participant.isLocal)) || refs[0];
+  const hasRemote = refs.some((t) => !t.participant.isLocal);
+  const sawRemoteRef = useRef(false);
+  const goneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Viewer-side end detection: once we've seen the host's video, its sustained
+  // disappearance means the host left (ended). Backend-independent fallback for
+  // when /live/end doesn't mark the stream ended or the WS broadcast is missed.
+  useEffect(() => {
+    if (isHost) return;
+    if (hasRemote) {
+      sawRemoteRef.current = true;
+      if (goneTimer.current) { clearTimeout(goneTimer.current); goneTimer.current = null; }
+    } else if (sawRemoteRef.current && !goneTimer.current) {
+      goneTimer.current = setTimeout(onHostGone, 4000);
+    }
+  }, [hasRemote, isHost, onHostGone]);
+  useEffect(() => () => { if (goneTimer.current) clearTimeout(goneTimer.current); }, []);
+
   return (
     <View style={StyleSheet.absoluteFill}>
       {cam ? (
@@ -125,7 +143,7 @@ function HostControls({ facing, setFacing }: { facing: "front" | "back"; setFaci
 // parent re-renders on every chat message, reaction or viewer-count tick.
 // Only re-renders when the token, role or camera facing actually change.
 const LiveStage = memo(function LiveStage({
-  token, isHost, facing, setFacing, onError, onDisconnected,
+  token, isHost, facing, setFacing, onError, onDisconnected, onHostGone,
 }: {
   token: string;
   isHost: boolean;
@@ -133,6 +151,7 @@ const LiveStage = memo(function LiveStage({
   setFacing: (f: "front" | "back") => void;
   onError: (e: Error) => void;
   onDisconnected: () => void;
+  onHostGone: () => void;
 }) {
   return (
     <LiveKitRoom
@@ -145,7 +164,7 @@ const LiveStage = memo(function LiveStage({
       onError={onError}
       onDisconnected={onDisconnected}
     >
-      <VideoStage isHost={isHost} facing={facing} />
+      <VideoStage isHost={isHost} facing={facing} onHostGone={onHostGone} />
       {isHost && <HostControls facing={facing} setFacing={setFacing} />}
     </LiveKitRoom>
   );
@@ -200,6 +219,11 @@ export default function LiveRoomScreen() {
   const onLkDisconnected = useCallback(() => {
     if (!isHost) setStatus((s) => (s === "ok" ? "ended" : s));
   }, [isHost]);
+
+  // Viewer detected the host's video is gone for good → the live ended.
+  const onHostGone = useCallback(() => {
+    setStatus((s) => (s === "ok" ? "ended" : s));
+  }, []);
 
   // Native audio routing for the call. Start on enter, release on exit.
   useEffect(() => {
@@ -450,7 +474,7 @@ export default function LiveRoomScreen() {
     <View style={{flex:1,backgroundColor:"#000"}}>
       {/* Native LiveKit video — full screen */}
       {lkToken ? (
-        <LiveStage token={lkToken} isHost={isHost} facing={facing} setFacing={setFacing} onError={onLkError} onDisconnected={onLkDisconnected} />
+        <LiveStage token={lkToken} isHost={isHost} facing={facing} setFacing={setFacing} onError={onLkError} onDisconnected={onLkDisconnected} onHostGone={onHostGone} />
       ) : (
         <View style={[StyleSheet.absoluteFill,{alignItems:"center",justifyContent:"center"}]}>
           <Ionicons name="radio-outline" size={64} color="rgba(255,255,255,0.12)" />
