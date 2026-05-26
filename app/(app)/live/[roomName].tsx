@@ -125,13 +125,14 @@ function HostControls({ facing, setFacing }: { facing: "front" | "back"; setFaci
 // parent re-renders on every chat message, reaction or viewer-count tick.
 // Only re-renders when the token, role or camera facing actually change.
 const LiveStage = memo(function LiveStage({
-  token, isHost, facing, setFacing, onError,
+  token, isHost, facing, setFacing, onError, onDisconnected,
 }: {
   token: string;
   isHost: boolean;
   facing: "front" | "back";
   setFacing: (f: "front" | "back") => void;
   onError: (e: Error) => void;
+  onDisconnected: () => void;
 }) {
   return (
     <LiveKitRoom
@@ -142,6 +143,7 @@ const LiveStage = memo(function LiveStage({
       video={isHost}
       options={ROOM_OPTIONS}
       onError={onError}
+      onDisconnected={onDisconnected}
     >
       <VideoStage isHost={isHost} facing={facing} />
       {isHost && <HostControls facing={facing} setFacing={setFacing} />}
@@ -171,6 +173,7 @@ export default function LiveRoomScreen() {
   const heartId = useRef(0);
   // End-of-live stats (client-side).
   const startRef = useRef<number>(Date.now());
+  const seenRef = useRef(false);
   const peakRef = useRef(0);
   const giftCoinsRef = useRef(0);
   const giftCountRef = useRef(0);
@@ -190,6 +193,14 @@ export default function LiveRoomScreen() {
     setError(e.message || "Stream error");
   }, []);
 
+  // When the host ends, the server closes the LiveKit room and viewers get
+  // disconnected immediately — the most reliable "stream ended" signal (the
+  // chat WS broadcast can be missed and polling lags). Hosts are excluded so a
+  // transient drop on their side doesn't kick them out of their own live.
+  const onLkDisconnected = useCallback(() => {
+    if (!isHost) setStatus((s) => (s === "ok" ? "ended" : s));
+  }, [isHost]);
+
   // Native audio routing for the call. Start on enter, release on exit.
   useEffect(() => {
     AudioSession.startAudioSession().catch(() => {});
@@ -202,8 +213,29 @@ export default function LiveRoomScreen() {
 
     // Chat WS + history + gift catalog + viewer-count polling. Shared by both
     // the host and viewer paths once we have a LiveKit token.
+    async function poll() {
+      try {
+        var ar2 = await fetch(API + "/live/active"); var ad2 = await ar2.json();
+        var f2 = (ad2.streams||[]).find(function(x:any){return x.room_name===roomName;});
+        if (f2) {
+          seenRef.current = true;
+          setViewers(f2.viewer_count);
+          if (f2.viewer_count > peakRef.current) peakRef.current = f2.viewer_count;
+          if (f2.host_username) setHostUser(function(prev){ return prev || { username: f2.host_username, name: f2.host_display_name || f2.host_username }; });
+        } else if (seenRef.current) {
+          // Stream was live and is now gone → it ended. Reliable end signal for
+          // viewers (the chat WS broadcast can be missed). Guarded by seenRef so
+          // a startup race (stream not yet listed) can't end it prematurely.
+          setStatus(function(s){ return s === "ok" ? "ended" : s; });
+        }
+      } catch {}
+    }
+
     async function setupRoom() {
       startRef.current = Date.now();
+      // Start polling FIRST so end-of-stream detection always runs, even if a
+      // history/catalog fetch below stalls.
+      interval = setInterval(poll, 5000);
       try { var ch = await fetch(API + "/live/" + roomName + "/chat?limit=50"); var cd = await ch.json(); if (cd.messages) setChat(cd.messages); } catch {}
       // WebSocket — pass the auth token so the server derives chat identity
       // from it (anti-impersonation). Without it the connection is read-only.
@@ -220,17 +252,6 @@ export default function LiveRoomScreen() {
         } catch {}
       };
       try { var gd = await getGiftCatalog(); setGifts(gd.gifts || []); } catch {}
-      interval = setInterval(async function() {
-        try {
-          var ar2 = await fetch(API + "/live/active"); var ad2 = await ar2.json();
-          var f2 = (ad2.streams||[]).find(function(x:any){return x.room_name===roomName;});
-          if (f2) {
-            setViewers(f2.viewer_count);
-            if (f2.viewer_count > peakRef.current) peakRef.current = f2.viewer_count;
-            if (f2.host_username) setHostUser(function(prev){ return prev || { username: f2.host_username, name: f2.host_display_name || f2.host_username }; });
-          } else setStatus("ended");
-        } catch {}
-      }, 10000);
     }
 
     (async () => {
@@ -429,7 +450,7 @@ export default function LiveRoomScreen() {
     <View style={{flex:1,backgroundColor:"#000"}}>
       {/* Native LiveKit video — full screen */}
       {lkToken ? (
-        <LiveStage token={lkToken} isHost={isHost} facing={facing} setFacing={setFacing} onError={onLkError} />
+        <LiveStage token={lkToken} isHost={isHost} facing={facing} setFacing={setFacing} onError={onLkError} onDisconnected={onLkDisconnected} />
       ) : (
         <View style={[StyleSheet.absoluteFill,{alignItems:"center",justifyContent:"center"}]}>
           <Ionicons name="radio-outline" size={64} color="rgba(255,255,255,0.12)" />
