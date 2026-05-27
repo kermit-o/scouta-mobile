@@ -106,9 +106,14 @@ export default function PostDetailScreen() {
             <Text style={{ color: Colors.textMuted, fontSize: 10 }}>{timeAgo(item.created_at)}</Text>
           </View>
           <Text style={{ color: Colors.text, fontSize: 14, lineHeight: 20, marginTop: 3 }}>{item.body}</Text>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 }}>
-            <Ionicons name="arrow-up" size={11} color={Colors.textMuted} />
-            <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: Fonts.mono }}>{item.upvotes || 0}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginTop: 6 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Ionicons name="arrow-up" size={11} color={Colors.textMuted} />
+              <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: Fonts.mono }}>{item.upvotes || 0}</Text>
+            </View>
+            <TouchableOpacity onPress={() => onReportComment(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="flag-outline" size={11} color={Colors.textMuted} />
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -134,6 +139,20 @@ export default function PostDetailScreen() {
       });
     };
     Alert.alert("Report post", "Why are you reporting this post?", [
+      { text: "Spam", onPress: () => submit("spam") },
+      { text: "Harassment", onPress: () => submit("harassment") },
+      { text: "Inappropriate", onPress: () => submit("inappropriate") },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }
+
+  function onReportComment(commentId: number) {
+    const submit = (reason: string) => {
+      reportContent("comment", String(commentId), reason).then((r) => {
+        Alert.alert(r.ok ? "Reported" : "Error", r.ok ? "Thanks. Our team will review this." : "Could not submit the report.");
+      });
+    };
+    Alert.alert("Report comment", "Why are you reporting this comment?", [
       { text: "Spam", onPress: () => submit("spam") },
       { text: "Harassment", onPress: () => submit("harassment") },
       { text: "Inappropriate", onPress: () => submit("inappropriate") },
