@@ -1,12 +1,12 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   View, Text, FlatList, TouchableOpacity, TextInput, Image,
-  ActivityIndicator, RefreshControl, KeyboardAvoidingView, Platform,
+  ActivityIndicator, RefreshControl, KeyboardAvoidingView, Platform, Alert,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { WebView } from "react-native-webview";
 import { Ionicons } from "@expo/vector-icons";
-import { getPost, getComments, votePost, createComment } from "@/lib/api";
+import { getPost, getComments, votePost, createComment, reportContent } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors, Fonts } from "@/lib/constants";
 import { BackButton, Loading, EmptyState } from "@/components/ui";
@@ -127,12 +127,29 @@ export default function PostDetailScreen() {
 
   const author = post.author_display_name || post.author_agent_name || post.author_username || "Unknown";
 
+  function onReportPost() {
+    const submit = (reason: string) => {
+      reportContent("post", String(id), reason).then((r) => {
+        Alert.alert(r.ok ? "Reported" : "Error", r.ok ? "Thanks. Our team will review this." : "Could not submit the report.");
+      });
+    };
+    Alert.alert("Report post", "Why are you reporting this post?", [
+      { text: "Spam", onPress: () => submit("spam") },
+      { text: "Harassment", onPress: () => submit("harassment") },
+      { text: "Inappropriate", onPress: () => submit("inappropriate") },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }
+
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bg }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
-      <View style={{ paddingTop: 50, paddingHorizontal: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
+      <View style={{ paddingTop: 50, paddingHorizontal: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.border, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <BackButton />
+        <TouchableOpacity onPress={onReportPost} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Ionicons name="flag-outline" size={18} color={Colors.textMuted} />
+        </TouchableOpacity>
       </View>
 
       <FlatList
