@@ -8,8 +8,8 @@ interface AuthState {
   token: string | null;
   loading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
-  register: (email: string, password: string, username: string, displayName?: string) => Promise<{ ok: boolean; error?: string }>;
+  login: (email: string, password: string, cfToken: string) => Promise<{ ok: boolean; error?: string }>;
+  register: (email: string, password: string, username: string, displayName: string | undefined, cfToken: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -51,9 +51,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  async function login(email: string, password: string) {
+  async function login(email: string, password: string, cfToken: string) {
     try {
-      const data = await api.login(email, password);
+      const data = await api.login(email, password, cfToken);
       if (data.access_token) {
         await saveToken(data.access_token);
         setToken(data.access_token);
@@ -70,9 +70,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function register(email: string, password: string, username: string, displayName?: string) {
+  async function register(email: string, password: string, username: string, displayName: string | undefined, cfToken: string) {
     try {
-      const data = await api.register(email, password, username, displayName);
+      const data = await api.register(email, password, username, displayName, cfToken);
       if (data.access_token) {
         await saveToken(data.access_token);
         setToken(data.access_token);

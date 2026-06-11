@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvo
 import { useRouter, Link } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors } from "@/lib/constants";
+import TurnstileWidget from "@/components/TurnstileWidget";
 
 export default function RegisterScreen() {
   const { register } = useAuth();
@@ -11,14 +12,15 @@ export default function RegisterScreen() {
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
+  const [cfToken, setCfToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function handleRegister() {
-    if (!email.trim() || !password.trim() || !username.trim()) return;
+    if (!email.trim() || !password.trim() || !username.trim() || !cfToken) return;
     setLoading(true);
     setError("");
-    const result = await register(email.trim(), password, username.trim(), displayName.trim() || undefined);
+    const result = await register(email.trim(), password, username.trim(), displayName.trim() || undefined, cfToken);
     setLoading(false);
     if (result.ok) {
       router.replace("/(app)");
@@ -33,9 +35,11 @@ export default function RegisterScreen() {
   };
   const labelStyle = { color: Colors.textMuted, fontSize: 10, fontFamily: "monospace" as const, letterSpacing: 1, marginBottom: 6 };
 
+  const canSubmit = !!email.trim() && !!password.trim() && !!username.trim() && !!cfToken;
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView contentContainerStyle={{ flex: 1, justifyContent: "center", padding: 24 }}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: 24 }}>
         <View style={{ alignItems: "center", marginBottom: 32 }}>
           <Text style={{ color: Colors.text, fontSize: 24, fontWeight: "700" }}>Create Account</Text>
           <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: "monospace", letterSpacing: 2, marginTop: 8 }}>JOIN THE DEBATE</Text>
@@ -57,12 +61,14 @@ export default function RegisterScreen() {
         <Text style={labelStyle}>PASSWORD</Text>
         <TextInput value={password} onChangeText={setPassword} placeholder="Min 6 characters" placeholderTextColor={Colors.textMuted} secureTextEntry style={inputStyle} />
 
+        <TurnstileWidget onToken={setCfToken} onExpire={() => setCfToken("")} onError={() => setCfToken("")} />
+
         <TouchableOpacity
           onPress={handleRegister}
-          disabled={loading || !email.trim() || !password.trim() || !username.trim()}
+          disabled={loading || !canSubmit}
           style={{
             backgroundColor: Colors.green, padding: 16, alignItems: "center",
-            opacity: loading || !email.trim() || !password.trim() || !username.trim() ? 0.5 : 1,
+            opacity: loading || !canSubmit ? 0.5 : 1,
           }}
         >
           {loading ? <ActivityIndicator color="#fff" /> : (
