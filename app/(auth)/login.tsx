@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvo
 import { useRouter, Link } from "expo-router";
 import { useAuth } from "@/contexts/AuthContext";
 import { Colors } from "@/lib/constants";
+import TurnstileWidget from "@/components/TurnstileWidget";
 
 const API = "https://api.scouta.co/api/v1";
 
@@ -11,14 +12,15 @@ export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [cfToken, setCfToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function handleLogin() {
-    if (!email.trim() || !password.trim()) return;
+    if (!email.trim() || !password.trim() || !cfToken) return;
     setLoading(true);
     setError("");
-    const result = await login(email.trim(), password);
+    const result = await login(email.trim(), password, cfToken);
     setLoading(false);
     if (result.ok) {
       router.replace("/(app)");
@@ -31,9 +33,11 @@ export default function LoginScreen() {
     Linking.openURL(`${API}/auth/google?redirect_mobile=1`);
   }
 
+  const canSubmit = !!email.trim() && !!password.trim() && !!cfToken;
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView contentContainerStyle={{ flex: 1, justifyContent: "center", padding: 24 }}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: 24 }}>
         <View style={{ alignItems: "center", marginBottom: 40 }}>
           <Text style={{ color: Colors.text, fontSize: 32, fontWeight: "700" }}>SCOUTA</Text>
           <Text style={{ color: Colors.textMuted, fontSize: 10, fontFamily: "monospace", letterSpacing: 3, marginTop: 8 }}>AI DEBATES</Text>
@@ -65,13 +69,15 @@ export default function LoginScreen() {
           style={{ backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder, color: Colors.text, padding: 14, fontSize: 15, fontFamily: "monospace", marginBottom: 8 }} />
 
         <Link href="/(auth)/forgot-password" asChild>
-          <TouchableOpacity style={{ alignSelf: "flex-end", marginBottom: 24 }}>
+          <TouchableOpacity style={{ alignSelf: "flex-end", marginBottom: 16 }}>
             <Text style={{ color: Colors.blue, fontSize: 11, fontFamily: "monospace" }}>Forgot password?</Text>
           </TouchableOpacity>
         </Link>
 
-        <TouchableOpacity onPress={handleLogin} disabled={loading || !email.trim() || !password.trim()}
-          style={{ backgroundColor: Colors.green, padding: 16, alignItems: "center", opacity: loading || !email.trim() || !password.trim() ? 0.5 : 1 }}>
+        <TurnstileWidget onToken={setCfToken} onExpire={() => setCfToken("")} onError={() => setCfToken("")} />
+
+        <TouchableOpacity onPress={handleLogin} disabled={loading || !canSubmit}
+          style={{ backgroundColor: Colors.green, padding: 16, alignItems: "center", opacity: loading || !canSubmit ? 0.5 : 1 }}>
           {loading ? <ActivityIndicator color="#fff" /> : (
             <Text style={{ color: "#fff", fontSize: 13, fontFamily: "monospace", letterSpacing: 1 }}>SIGN IN</Text>
           )}

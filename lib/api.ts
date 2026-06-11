@@ -13,19 +13,19 @@ async function apiFetch(path: string, options: RequestInit = {}): Promise<Respon
   return fetch(`${API_BASE}${path}`, { ...options, headers });
 }
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
-export async function login(email: string, password: string) {
+// ── Auth ───────────────────────────────────────────────────────────
+export async function login(email: string, password: string, cfToken: string) {
   const res = await apiFetch("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password, cf_turnstile_token: "xPMEvUwAp_EFk7EGkEMJUBm-osAyoLFBPCl9xkzqKkU" }),
+    body: JSON.stringify({ email, password, cf_turnstile_token: cfToken }),
   });
   return res.json();
 }
 
-export async function register(email: string, password: string, username: string, display_name?: string) {
+export async function register(email: string, password: string, username: string, display_name: string | undefined, cfToken: string) {
   const res = await apiFetch("/auth/register", {
     method: "POST",
-    body: JSON.stringify({ email, password, username, display_name: display_name || username, cf_turnstile_token: "xPMEvUwAp_EFk7EGkEMJUBm-osAyoLFBPCl9xkzqKkU" }),
+    body: JSON.stringify({ email, password, username, display_name: display_name || username, cf_turnstile_token: cfToken }),
   });
   return res.json();
 }
@@ -43,7 +43,7 @@ export async function getMe() {
   return res.json();
 }
 
-// ── Posts ──────────────────────────────────────────────────────────────────────
+// ── Posts ─────────────────────────────────────────────────────────
 export async function getFeed(sort = "recent", limit = 20, offset = 0, tag?: string) {
   let url = `/orgs/${ORG_ID}/posts?status=published&sort=${sort}&limit=${limit}&offset=${offset}`;
   if (tag) url += `&tag=${encodeURIComponent(tag)}`;
@@ -87,7 +87,7 @@ export async function getSavedPosts(limit = 20, offset = 0) {
   return res.json();
 }
 
-// ── Comments ──────────────────────────────────────────────────────────────────
+// ── Comments ─────────────────────────────────────────────────
 export async function getComments(postId: number, limit = 50, offset = 0) {
   const res = await apiFetch(`/orgs/${ORG_ID}/posts/${postId}/comments?limit=${limit}&offset=${offset}`);
   return res.json();
@@ -109,7 +109,7 @@ export async function voteComment(postId: number, commentId: number, value: 1 | 
   return res.json();
 }
 
-// ── Agents ────────────────────────────────────────────────────────────────────
+// ── Agents ─────────────────────────────────────────────────────
 export async function getLeaderboard(limit = 50) {
   const res = await apiFetch(`/agents/leaderboard?limit=${limit}`);
   return res.json();
@@ -130,7 +130,7 @@ export async function unfollowAgent(agentId: number) {
   return res.json();
 }
 
-// ── Profile ───────────────────────────────────────────────────────────────────
+// ── Profile ───────────────────────────────────────────────────
 export async function getMyProfile() {
   const res = await apiFetch("/profile/me");
   return res.json();
@@ -149,13 +149,13 @@ export async function updateProfile(data: Record<string, string>) {
   return res.json();
 }
 
-// ── Search ────────────────────────────────────────────────────────────────────
+// ── Search ─────────────────────────────────────────────────────
 export async function globalSearch(q: string) {
   const res = await apiFetch(`/search?q=${encodeURIComponent(q)}`);
   return res.json();
 }
 
-// ── Notifications ─────────────────────────────────────────────────────────────
+// ── Notifications ────────────────────────────────────────────
 export async function getNotifications(limit = 20, offset = 0) {
   const res = await apiFetch(`/notifications?limit=${limit}&offset=${offset}`);
   return res.json();
@@ -166,7 +166,7 @@ export async function markAllRead() {
   return res.json();
 }
 
-// ── Messages ──────────────────────────────────────────────────────────────────
+// ── Messages ─────────────────────────────────────────────────
 export async function getConversations() {
   const res = await apiFetch("/messages/conversations");
   return res.json();
@@ -195,7 +195,7 @@ export async function getUnreadCount() {
   return res.json();
 }
 
-// ── Live ──────────────────────────────────────────────────────────────────────
+// ── Live ─────────────────────────────────────────────────────────
 export async function getActiveStreams() {
   const res = await apiFetch("/live/active");
   return res.json();
@@ -227,7 +227,7 @@ export async function getTopGifters(roomName: string) {
   return res.json();
 }
 
-// ── Coins ─────────────────────────────────────────────────────────────────────
+// ── Coins ───────────────────────────────────────────────────────
 export async function getCoinBalance() {
   const res = await apiFetch("/coins/balance");
   return res.json();
